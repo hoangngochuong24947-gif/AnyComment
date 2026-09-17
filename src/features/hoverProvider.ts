@@ -5,7 +5,7 @@ import { CommentExtractor } from '../parser/commentExtractor.js';
 
 /**
  * AnyComment Hover Provider
- * Intercepts comments and symbols to append cached translations or translate action links.
+ * Supports both standard technical translation and Chinese plain-talk explanation.
  * Official Reference: https://code.visualstudio.com/api/references/vscode-api#languages.registerHoverProvider
  */
 export class AnyCommentHoverProvider implements vscode.HoverProvider {
@@ -17,23 +17,25 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
     const line = document.lineAt(position.line);
     const lineText = line.text;
 
-    // 1. Identify comment on current line
+    // 1. Identify comment on current line or symbol
     const slashIdx = lineText.indexOf('//');
     const hashIdx = lineText.indexOf('#');
     let targetText = '';
+    let associatedSignature: string | undefined;
 
     if (slashIdx !== -1 && position.character >= slashIdx) {
       targetText = CommentExtractor.cleanCommentText(lineText.slice(slashIdx));
+      associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
     } else if (hashIdx !== -1 && position.character >= hashIdx) {
       targetText = CommentExtractor.cleanCommentText(lineText.slice(hashIdx));
+      associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
     } else {
-      // If cursor is not on a comment, check word/selection
       const wordRange = document.getWordRangeAtPosition(position);
       if (wordRange) {
         const word = document.getText(wordRange);
-        // Only consider meaningful identifier words (> 3 chars)
         if (word.length >= 3) {
           targetText = word;
+          associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
         }
       }
     }
@@ -44,32 +46,49 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
 
     const config = ConfigManager.getInstance().getConfig();
     const storage = StorageManager.getInstance();
-    const cached = storage.get(targetText, config.targetLanguage, config.activeStyle);
+    const activeStyleId = config.enableExplainMode ? config.explainStyle : config.activeStyle;
+    const cached = storage.get(targetText, config.targetLanguage, activeStyleId);
 
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
     md.supportHtml = true;
 
     if (cached) {
-      const badge = cached.partition === 'custom'
-        ? `🎨 AI风格 [${cached.styleId ?? config.activeStyle}]`
+      const isExplain = config.enableExplainMode;
+      const titleBadge = isExplain
+        ? `💡 AnyComment 大白话讲解 [${config.explainStyle}]`
+        : cached.partition === 'custom'
+        ? `🎨 AnyComment [${config.activeStyle}]`
         : cached.source === 'seed'
         ? '📦 官方标准库预置'
         : '🌐 标准基线';
 
-      md.appendMarkdown(`---\n### 📖 AnyComment (${badge})\n\n> ${cached.translation}\n\n`);
+      md.appendMarkdown(`---\n### ${titleBadge}\n\n> ${cached.translation}\n\n`);
 
-      if (cached.isFallback) {
-        // If falling back to standard, offer to generate with the active custom style
-        const cmdArgs = encodeURIComponent(JSON.stringify({ text: targetText, forceCustom: true }));
-        md.appendMarkdown(`[✨ 生成当前风格解读](${vscode.Uri.parse(`command:anycomment.translateHover?${cmdArgs}`)}) `);
+      // Bidirectional action links
+      if (isExplain) {
+        const transArgs = encodeURIComponent(JSON.stringify({ text: targetText, forceTranslate: true }));
+        md.appendMarkdown(`[🌐 查看客观直译](${vscode.Uri.parse(`command:anycomment.translateHover?${transArgs}`)})  `);
+      } else {
+        const explainArgs = encodeURIComponent(
+          JSON.stringify({ text: targetText, forceExplain: true, signature: associatedSignature })
+        );
+        md.appendMarkdown(`[💡 大白话讲讲这个](${vscode.Uri.parse(`command:anycomment.translateHover?${explainArgs}`)})  `);
       }
 
-      const retranslateArgs = encodeURIComponent(JSON.stringify({ text: targetText, forceRefresh: true }));
-      md.appendMarkdown(`[🔄 重新翻译](${vscode.Uri.parse(`command:anycomment.translateHover?${retranslateArgs}`)})\n`);
+      const refreshArgs = encodeURIComponent(
+        JSON.stringify({ text: targetText, forceRefresh: true, signature: associatedSignature })
+      );
+      md.appendMarkdown(`[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.translateHover?${refreshArgs}`)})\n`);
     } else {
-      const cmdArgs = encodeURIComponent(JSON.stringify({ text: targetText }));
-      md.appendMarkdown(`---\n[🌐 AnyComment: 翻译/解读此内容](${vscode.Uri.parse(`command:anycomment.translateHover?${cmdArgs}`)})\n`);
+      const transArgs = encodeURIComponent(JSON.stringify({ text: targetText, signature: associatedSignature }));
+      const explainArgs = encodeURIComponent(
+        JSON.stringify({ text: targetText, forceExplain: true, signature: associatedSignature })
+      );
+
+      md.appendMarkdown(`---\n`);
+      md.appendMarkdown(`[🌐 翻译此内容](${vscode.Uri.parse(`command:anycomment.translateHover?${transArgs}`)})  |  `);
+      md.appendMarkdown(`[💡 大白话讲解](${vscode.Uri.parse(`command:anycomment.translateHover?${explainArgs}`)})\n`);
     }
 
     return new vscode.Hover(md);

@@ -1,14 +1,24 @@
 import * as vscode from 'vscode';
-import { AnyCommentConfig, ProviderId, StyleId, PromptStyle, PRESET_STYLES } from './types.js';
+import {
+  AnyCommentConfig,
+  ProviderId,
+  TranslationStyleId,
+  ExplainStyleId,
+  PromptStyle,
+  TRANSLATION_PRESETS,
+  EXPLAIN_PRESETS,
+} from './types.js';
 
 const SECRET_KEY_OPENAI = 'anycomment.secret.openai.apiKey';
 
 export class ConfigManager {
   private static instance: ConfigManager;
   private secretStorage: vscode.SecretStorage;
+  private globalState: vscode.Memento;
 
   private constructor(context: vscode.ExtensionContext) {
     this.secretStorage = context.secrets;
+    this.globalState = context.globalState;
   }
 
   public static initialize(context: vscode.ExtensionContext): ConfigManager {
@@ -28,8 +38,10 @@ export class ConfigManager {
   public getConfig(): AnyCommentConfig {
     const config = vscode.workspace.getConfiguration('anycomment');
     return {
-      activeProvider: config.get<ProviderId>('activeProvider', 'openai'),
-      activeStyle: config.get<StyleId>('activeStyle', 'tech-plain'),
+      activeProvider: config.get<ProviderId>('activeProvider', 'vscode-lm'),
+      activeStyle: config.get<TranslationStyleId>('activeStyle', 'tech-native'),
+      enableExplainMode: config.get<boolean>('enableExplainMode', false),
+      explainStyle: config.get<ExplainStyleId>('explainStyle', 'pragmatic'),
       targetLanguage: config.get<string>('targetLanguage', 'zh-CN'),
       openai: {
         baseURL: config.get<string>('openai.baseURL', 'https://api.deepseek.com'),
@@ -40,14 +52,27 @@ export class ConfigManager {
         '你是一位资深工程师。请将以下代码注释/文档翻译为中文，保持技术术语准确，语气通俗简练。'
       ),
       enableHoverAutoTranslate: config.get<boolean>('enableHoverAutoTranslate', false),
+      hasCompletedOnboarding: this.globalState.get<boolean>('anycomment.hasCompletedOnboarding', false),
     };
+  }
+
+  public async setHasCompletedOnboarding(completed: boolean): Promise<void> {
+    await this.globalState.update('anycomment.hasCompletedOnboarding', completed);
+  }
+
+  public async setEnableExplainMode(enabled: boolean): Promise<void> {
+    await vscode.workspace.getConfiguration('anycomment').update('enableExplainMode', enabled, vscode.ConfigurationTarget.Global);
+  }
+
+  public async setExplainStyle(styleId: ExplainStyleId): Promise<void> {
+    await vscode.workspace.getConfiguration('anycomment').update('explainStyle', styleId, vscode.ConfigurationTarget.Global);
   }
 
   public async setActiveProvider(providerId: ProviderId): Promise<void> {
     await vscode.workspace.getConfiguration('anycomment').update('activeProvider', providerId, vscode.ConfigurationTarget.Global);
   }
 
-  public async setActiveStyle(styleId: StyleId): Promise<void> {
+  public async setActiveStyle(styleId: TranslationStyleId): Promise<void> {
     await vscode.workspace.getConfiguration('anycomment').update('activeStyle', styleId, vscode.ConfigurationTarget.Global);
   }
 
@@ -73,17 +98,34 @@ export class ConfigManager {
     await this.secretStorage.delete(SECRET_KEY_OPENAI);
   }
 
-  public getPromptStyle(styleId: StyleId): PromptStyle {
+  /**
+   * Returns current active prompt style based on translation or explain mode
+   */
+  public getEffectiveStyle(): PromptStyle {
+    const cfg = this.getConfig();
+    if (cfg.enableExplainMode) {
+      return this.getExplainStyle(cfg.explainStyle);
+    }
+    return this.getTranslationStyle(cfg.activeStyle);
+  }
+
+  public getTranslationStyle(styleId: TranslationStyleId): PromptStyle {
     if (styleId === 'custom') {
       const customPrompt = this.getConfig().customStylePrompt;
       return {
         id: 'custom',
         name: '自定义提示词',
-        description: '由用户在控制中心自行编写的提示词规则',
+        description: '由用户自行编写的提示词规则',
         systemPrompt: customPrompt,
         userPromptTemplate: '{text}',
       };
     }
-    return PRESET_STYLES[styleId];
+    const preset = TRANSLATION_PRESETS[styleId];
+    return preset ?? TRANSLATION_PRESETS['tech-native'];
+  }
+
+  public getExplainStyle(styleId: ExplainStyleId): PromptStyle {
+    const preset = EXPLAIN_PRESETS[styleId];
+    return preset ?? EXPLAIN_PRESETS.pragmatic;
   }
 }

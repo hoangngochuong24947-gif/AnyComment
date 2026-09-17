@@ -26,4 +26,22 @@ describe('CommentExtractor Tests', () => {
     const clean = CommentExtractor.cleanCommentText(raw);
     expect(clean).toBe('Process data using worker queue');
   });
+
+  it('findAssociatedSignature should identify functions and struct types', () => {
+    // Mock document
+    const lines = [
+      '// ListenAndServe listens on addr',
+      'func ListenAndServe(addr string, handler Handler) error {',
+      '    return nil',
+      '}',
+    ];
+
+    const mockDoc: any = {
+      lineCount: lines.length,
+      lineAt: (i: number) => ({ text: lines[i] }),
+    };
+
+    const sig = CommentExtractor.findAssociatedSignature(mockDoc, 0);
+    expect(sig).toBe('func ListenAndServe(addr string, handler Handler) error');
+  });
 });

@@ -7,6 +7,7 @@ import { AnyCommentHoverProvider } from './features/hoverProvider.js';
 import { ImmersiveDecorator } from './features/immersiveDecorator.js';
 import { StatusBarManager } from './features/statusBar.js';
 import { AnyCommentViewProvider } from './webview/panel.js';
+import { OnboardingWizard } from './features/onboarding.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('[AnyComment] Activating personal translation extension...');
@@ -47,7 +48,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 8. Register translateHover command
   const translateHoverCmd = vscode.commands.registerCommand(
     'anycomment.translateHover',
-    async (args?: { text: string; forceCustom?: boolean; forceRefresh?: boolean }) => {
+    async (args?: {
+      text: string;
+      forceExplain?: boolean;
+      forceTranslate?: boolean;
+      forceRefresh?: boolean;
+      signature?: string;
+    }) => {
       let textToTranslate = args?.text;
 
       if (!textToTranslate) {
@@ -60,7 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (!textToTranslate) {
         textToTranslate = await vscode.window.showInputBox({
-          prompt: '请输入要翻译或解析的代码注释/英文文本：',
+          prompt: '请输入要翻译或大白话解析的代码注释/英文文本：',
         });
       }
 
@@ -69,12 +76,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
 
       const config = configMgr.getConfig();
-      const style = configMgr.getPromptStyle(config.activeStyle);
+      const isExplain = args?.forceExplain ?? (args?.forceTranslate ? false : config.enableExplainMode);
+
+      const style = isExplain
+        ? configMgr.getExplainStyle(config.explainStyle)
+        : configMgr.getTranslationStyle(config.activeStyle);
+
+      // Inject associated code signature into template if available
+      let userPrompt = style.userPromptTemplate;
+      if (args?.signature) {
+        userPrompt = userPrompt.replace(/\{context_info\}/g, `[代码上下文定义]:\n\`\`\`\n${args.signature}\n\`\`\``);
+      } else {
+        userPrompt = userPrompt.replace(/\{context_info\}\n*/g, '');
+      }
+
+      const effectiveStyle = {
+        ...style,
+        userPromptTemplate: userPrompt,
+      };
+
+      const actionTitle = isExplain ? `大白话讲解 (${style.name})` : `翻译 (${style.name})`;
 
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `AnyComment: 正在使用 [${config.activeProvider}] 进行 [${style.name}] 翻译...`,
+          title: `AnyComment: 正在使用 [${config.activeProvider}] 生成 ${actionTitle}...`,
           cancellable: false,
         },
         async () => {
@@ -82,10 +108,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             const response = await providerRegistry.executeTranslation({
               sourceText: textToTranslate!,
               targetLang: config.targetLanguage,
-              style,
+              style: effectiveStyle,
             });
 
-            if (response.providerId === 'google' || style.id === 'literal') {
+            if (!isExplain && (response.providerId === 'google' || style.id === 'literal-accurate')) {
               // Save to standard store baseline
               await storageMgr.saveStandardTranslation(
                 textToTranslate!,
@@ -98,29 +124,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               await storageMgr.saveCustomTranslation(
                 textToTranslate!,
                 config.targetLanguage,
-                config.activeStyle,
+                style.id,
                 response.translatedText,
                 response.model,
                 response.providerId
               );
             }
 
-            // If immersive mode is active, refresh active editor decorations
+            // Refresh decorations and views
             immersiveDecorator.updateActiveEditor();
             viewProvider.sendCurrentState();
 
             vscode.window.showInformationMessage(
-              `AnyComment 译文 (${response.model}):\n${response.translatedText}`
+              `AnyComment (${response.model} · ${style.name}):\n\n${response.translatedText}`
             );
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
-            vscode.window.showErrorMessage(`AnyComment 翻译失败: ${message}`);
+            vscode.window.showErrorMessage(`AnyComment 处理失败: ${message}`);
           }
         }
       );
     }
   );
   context.subscriptions.push(translateHoverCmd);
+
+  // 9. Run First-time Onboarding Wizard if not completed
+  if (!configMgr.getConfig().hasCompletedOnboarding) {
+    // Run wizard asynchronously so extension activation is not blocked
+    setTimeout(() => {
+      OnboardingWizard.run().catch((e) => console.warn('[AnyComment] Onboarding error:', e));
+    }, 1000);
+  }
 
   console.log('[AnyComment] Activated successfully.');
 }

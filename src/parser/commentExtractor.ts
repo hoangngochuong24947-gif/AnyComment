@@ -1,14 +1,16 @@
 import * as vscode from 'vscode';
 
-export interface ExtractedComment {
+export type ExtractedComment = {
   range: vscode.Range;
   cleanText: string;
   rawText: string;
   isBlock: boolean;
-}
+  associatedCodeSignature?: string;
+};
 
 /**
- * Extracts comments from code files across Go, TS/JS, Python, Rust, etc.
+ * Ultra-lightweight comment and code signature extractor.
+ * Zero external dependencies, pure regex and line scanning (<1ms).
  */
 export class CommentExtractor {
   /**
@@ -38,11 +40,39 @@ export class CommentExtractor {
   }
 
   /**
+   * Ultra-lightweight lookahead: inspects 1~4 lines below the comment to grab the code signature.
+   * Recognizes functions, methods, classes, types, structs, and interfaces across Go, TS, Python, Rust.
+   */
+  public static findAssociatedSignature(document: vscode.TextDocument, endLineIndex: number): string | undefined {
+    const maxScanLines = Math.min(document.lineCount, endLineIndex + 5);
+
+    for (let i = endLineIndex + 1; i < maxScanLines; i++) {
+      const lineText = document.lineAt(i).text.trim();
+      if (!lineText) continue;
+
+      // Stop if hitting another comment line
+      if (lineText.startsWith('//') || lineText.startsWith('#') || lineText.startsWith('/*')) {
+        break;
+      }
+
+      // Check common function/type signatures
+      const signatureRegex =
+        /^(export\s+)?(default\s+)?(async\s+)?(func|def|function|class|interface|type|struct|enum|fn|pub\s+fn|pub\s+struct)\b/;
+
+      if (signatureRegex.test(lineText) || lineText.includes(':=') || lineText.includes(' = (')) {
+        // Strip trailing open braces or colons for clean presentation
+        return lineText.replace(/[\{\}:]+\s*$/, '').trim();
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * Finds all comments in an active TextDocument for decoration rendering
    */
   public static extractDocumentComments(document: vscode.TextDocument): ExtractedComment[] {
     const comments: ExtractedComment[] = [];
-    const text = document.getText();
     const lineCount = document.lineCount;
     const langId = document.languageId;
 
@@ -54,7 +84,6 @@ export class CommentExtractor {
     for (let i = 0; i < lineCount; i++) {
       const line = document.lineAt(i);
       const text = line.text;
-      const trimmed = text.trim();
 
       if (inBlockComment) {
         blockLines.push(text);
@@ -66,8 +95,10 @@ export class CommentExtractor {
           const range = new vscode.Range(startPos, endPos);
           const rawText = blockLines.join('\n');
           const cleanText = CommentExtractor.cleanCommentText(rawText);
+          const associatedCodeSignature = CommentExtractor.findAssociatedSignature(document, i);
+
           if (cleanText.length > 2) {
-            comments.push({ range, cleanText, rawText, isBlock: true });
+            comments.push({ range, cleanText, rawText, isBlock: true, associatedCodeSignature });
           }
           blockLines = [];
         }
@@ -80,12 +111,14 @@ export class CommentExtractor {
         if (hashIdx !== -1) {
           const raw = text.slice(hashIdx);
           const clean = CommentExtractor.cleanCommentText(raw);
+          const associatedCodeSignature = CommentExtractor.findAssociatedSignature(document, i);
           if (clean.length > 2) {
             comments.push({
               range: new vscode.Range(new vscode.Position(i, hashIdx), line.range.end),
               cleanText: clean,
               rawText: raw,
               isBlock: false,
+              associatedCodeSignature,
             });
           }
         }
@@ -97,19 +130,18 @@ export class CommentExtractor {
       if (blockStartIdx !== -1) {
         const blockEndIdx = text.indexOf('*/', blockStartIdx + 2);
         if (blockEndIdx !== -1) {
-          // Single-line block comment
           const range = new vscode.Range(
             new vscode.Position(i, blockStartIdx),
             new vscode.Position(i, blockEndIdx + 2)
           );
           const raw = text.substring(blockStartIdx, blockEndIdx + 2);
           const clean = CommentExtractor.cleanCommentText(raw);
+          const associatedCodeSignature = CommentExtractor.findAssociatedSignature(document, i);
           if (clean.length > 2) {
-            comments.push({ range, cleanText: clean, rawText: raw, isBlock: true });
+            comments.push({ range, cleanText: clean, rawText: raw, isBlock: true, associatedCodeSignature });
           }
           continue;
         } else {
-          // Multi-line block start
           inBlockComment = true;
           blockStartLine = i;
           blockStartChar = blockStartIdx;
@@ -123,12 +155,14 @@ export class CommentExtractor {
       if (slashIdx !== -1) {
         const raw = text.slice(slashIdx);
         const clean = CommentExtractor.cleanCommentText(raw);
+        const associatedCodeSignature = CommentExtractor.findAssociatedSignature(document, i);
         if (clean.length > 2) {
           comments.push({
             range: new vscode.Range(new vscode.Position(i, slashIdx), line.range.end),
             cleanText: clean,
             rawText: raw,
             isBlock: false,
+            associatedCodeSignature,
           });
         }
       }

@@ -87,7 +87,7 @@ export class OpenAICompatibleProvider implements ITranslationProvider {
       const res = await this.translate({
         sourceText: 'Hello world',
         targetLang: 'zh-CN',
-        style: ConfigManager.getInstance().getPromptStyle('literal'),
+        style: ConfigManager.getInstance().getTranslationStyle('literal-accurate'),
       });
       return { success: true, message: `连接成功 (模型: ${res.model}, 延迟: ${res.latencyMs}ms)` };
     } catch (err: unknown) {

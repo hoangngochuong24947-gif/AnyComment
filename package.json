@@ -1,8 +1,8 @@
 {
   "name": "anycomment",
   "displayName": "AnyComment",
-  "description": "Personal AI-powered code comment & documentation translator with decoupled providers and partitioned disk caching.",
-  "version": "0.1.0",
+  "description": "Personal AI-powered code comment & documentation translator with decoupled providers, partitioned disk caching, and plain-talk explanation.",
+  "version": "0.2.0",
   "publisher": "luliuyuan",
   "engines": {
     "vscode": "^1.90.0"
@@ -24,6 +24,11 @@
         "category": "AnyComment"
       },
       {
+        "command": "anycomment.toggleExplainMode",
+        "title": "AnyComment: 切换【中文大白话讲解模式】/【标准翻译模式】",
+        "category": "AnyComment"
+      },
+      {
         "command": "anycomment.switchProvider",
         "title": "AnyComment: 切换翻译服务 (Provider)",
         "category": "AnyComment"
@@ -35,7 +40,7 @@
       },
       {
         "command": "anycomment.translateHover",
-        "title": "AnyComment: 翻译当前文档",
+        "title": "AnyComment: 翻译当前文档或大白话讲解",
         "category": "AnyComment"
       },
       {
@@ -49,6 +54,12 @@
         "command": "anycomment.toggleImmersive",
         "key": "ctrl+shift+b",
         "mac": "cmd+shift+b",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "anycomment.toggleExplainMode",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
         "when": "editorTextFocus"
       }
     ],
@@ -75,20 +86,45 @@
       "properties": {
         "anycomment.activeProvider": {
           "type": "string",
-          "enum": ["openai", "vscode-lm", "google"],
-          "default": "openai",
-          "description": "当前使用的翻译 Provider"
+          "enum": [
+            "vscode-lm",
+            "openai",
+            "google"
+          ],
+          "default": "vscode-lm",
+          "description": "当前使用的翻译/解析服务 Provider"
         },
         "anycomment.activeStyle": {
           "type": "string",
-          "enum": ["tech-plain", "literal", "deep-dive", "custom"],
-          "default": "tech-plain",
-          "description": "当前使用的提示词风格"
+          "enum": [
+            "tech-native",
+            "github-dev",
+            "literal-accurate",
+            "bilingual-mix",
+            "custom"
+          ],
+          "default": "tech-native",
+          "description": "当前使用的翻译提示词风格（借鉴沉浸式翻译成熟规范）"
+        },
+        "anycomment.enableExplainMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否开启【中文大白话讲解模式】（快捷键: Cmd+Shift+E）"
+        },
+        "anycomment.explainStyle": {
+          "type": "string",
+          "enum": [
+            "pragmatic",
+            "eli5",
+            "intent"
+          ],
+          "default": "pragmatic",
+          "description": "中文大白话讲解风格 (生产实战 / 极简大白话 / 架构意图)"
         },
         "anycomment.targetLanguage": {
           "type": "string",
           "default": "zh-CN",
-          "description": "目标翻译语言 (例如 zh-CN, en, ja)"
+          "description": "目标语言 (例如 zh-CN, en, ja)"
         },
         "anycomment.openai.baseURL": {
           "type": "string",
@@ -108,7 +144,7 @@
         "anycomment.enableHoverAutoTranslate": {
           "type": "boolean",
           "default": false,
-          "description": "Hover 时未命中缓存是否自动调用 AI 翻译 (默认 false，通过点击 [翻译] 触发)"
+          "description": "Hover 时未命中缓存是否自动调用 AI (默认 false，通过点击链接按需触发)"
         }
       }
     }

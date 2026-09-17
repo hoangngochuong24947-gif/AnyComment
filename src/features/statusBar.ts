@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ConfigManager } from '../config/index.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { StorageManager } from '../storage/storageManager.js';
-import type { ProviderId, StyleId } from '../config/types.js';
+import type { ProviderId, TranslationStyleId, ExplainStyleId } from '../config/types.js';
 
 export class StatusBarManager {
   private statusBarItem: vscode.StatusBarItem;
@@ -23,6 +23,16 @@ export class StatusBarManager {
       this.showQuickMenu();
     });
 
+    const toggleExplainCmd = vscode.commands.registerCommand('anycomment.toggleExplainMode', async () => {
+      const cfg = ConfigManager.getInstance();
+      const current = cfg.getConfig().enableExplainMode;
+      await cfg.setEnableExplainMode(!current);
+      this.updateLabel();
+      vscode.window.showInformationMessage(
+        !current ? 'AnyComment: 已切换为【💡 中文大白话讲解模式】' : 'AnyComment: 已切换为【🌐 标准翻译模式】'
+      );
+    });
+
     const switchProviderCmd = vscode.commands.registerCommand('anycomment.switchProvider', () => {
       this.promptSwitchProvider();
     });
@@ -41,38 +51,77 @@ export class StatusBarManager {
       }
     });
 
-    this.disposables.push(menuCmd, switchProviderCmd, switchStyleCmd, clearCacheCmd, configChange, this.statusBarItem);
+    this.disposables.push(
+      menuCmd,
+      toggleExplainCmd,
+      switchProviderCmd,
+      switchStyleCmd,
+      clearCacheCmd,
+      configChange,
+      this.statusBarItem
+    );
     context.subscriptions.push(...this.disposables);
   }
 
   public updateLabel(): void {
     const config = ConfigManager.getInstance().getConfig();
     const provider = ProviderRegistry.getInstance().getProvider(config.activeProvider);
-    const style = ConfigManager.getInstance().getPromptStyle(config.activeStyle);
 
     let providerShort = 'OpenAI';
     if (provider.id === 'vscode-lm') providerShort = 'Copilot';
     if (provider.id === 'google') providerShort = 'Google';
 
-    this.statusBarItem.text = `$(comment-discussion) AnyComment: ${providerShort} · ${style.name.split(' ')[0]}`;
-    this.statusBarItem.tooltip = `AnyComment 状态:\n- 服务: ${provider.name}\n- 风格: ${style.name}\n- 目标语言: ${config.targetLanguage}\n(点击切换)`;
+    if (config.enableExplainMode) {
+      const explainStyle = ConfigManager.getInstance().getExplainStyle(config.explainStyle);
+      this.statusBarItem.text = `$(lightbulb) AnyComment: ${providerShort} · 讲解(${explainStyle.name.split(' ')[0]})`;
+      this.statusBarItem.tooltip = `AnyComment [大白话讲解模式已激活]\n- 服务: ${provider.name}\n- 讲解风格: ${explainStyle.name}\n(点击呼出菜单，或按 Cmd+Shift+E 切回直译)`;
+    } else {
+      const transStyle = ConfigManager.getInstance().getTranslationStyle(config.activeStyle);
+      this.statusBarItem.text = `$(comment-discussion) AnyComment: ${providerShort} · 翻译(${transStyle.name.split('·')[0] || transStyle.name})`;
+      this.statusBarItem.tooltip = `AnyComment [标准翻译模式]\n- 服务: ${provider.name}\n- 翻译风格: ${transStyle.name}\n(点击呼出菜单，或按 Cmd+Shift+E 切换为大白话讲解)`;
+    }
   }
 
   private async showQuickMenu(): Promise<void> {
+    const config = ConfigManager.getInstance().getConfig();
+
     const items = [
-      { label: '$(plug) 切换 AI 翻译服务', description: 'DeepSeek / Copilot / Google', action: 'provider' },
-      { label: '$(symbol-keyword) 切换提示词风格', description: '通俗 / 直译 / 深度解析 / 自定义', action: 'style' },
-      { label: '$(eye) 切换行内沉浸式注释 (Cmd+Shift+B)', description: '开启/关闭行末 Ghost Text', action: 'toggleImmersive' },
-      { label: '$(trash) 清理缓存', description: '独立重置自定义风格或全部缓存', action: 'clearCache' },
+      {
+        label: config.enableExplainMode ? '$(comment) 切换到【标准翻译模式】' : '$(lightbulb) 切换到【中文大白话讲解模式】',
+        description: '快捷键: Cmd+Shift+E / Ctrl+Shift+E',
+        action: 'toggleExplain',
+      },
+      {
+        label: '$(plug) 切换 AI 翻译服务',
+        description: 'Copilot / DeepSeek / Google',
+        action: 'provider',
+      },
+      {
+        label: config.enableExplainMode ? '$(symbol-keyword) 切换【大白话讲解风格】' : '$(symbol-keyword) 切换【翻译提示词风格】',
+        description: config.enableExplainMode ? '极简大白话 / 生产实战 / 架构意图' : '科技专家 / 开源GitHub / 逐行直译 / 双语混合',
+        action: 'style',
+      },
+      {
+        label: '$(eye) 切换行内沉浸式注释 (Cmd+Shift+B)',
+        description: '开启/关闭代码行末 Ghost Text 译文',
+        action: 'toggleImmersive',
+      },
+      {
+        label: '$(trash) 清理缓存',
+        description: '独立重置自定义风格或全部缓存',
+        action: 'clearCache',
+      },
     ];
 
     const pick = await vscode.window.showQuickPick(items, {
-      placeHolder: 'AnyComment 控制菜单',
+      placeHolder: 'AnyComment 控制中心快捷菜单',
     });
 
     if (!pick) return;
 
-    if (pick.action === 'provider') {
+    if (pick.action === 'toggleExplain') {
+      vscode.commands.executeCommand('anycomment.toggleExplainMode');
+    } else if (pick.action === 'provider') {
       await this.promptSwitchProvider();
     } else if (pick.action === 'style') {
       await this.promptSwitchStyle();
@@ -106,32 +155,56 @@ export class StatusBarManager {
 
   private async promptSwitchStyle(): Promise<void> {
     const config = ConfigManager.getInstance().getConfig();
-    const styleIds: StyleId[] = ['tech-plain', 'literal', 'deep-dive', 'custom'];
 
-    const items = styleIds.map((id) => {
-      const style = ConfigManager.getInstance().getPromptStyle(id);
-      return {
-        label: `${id === config.activeStyle ? '● ' : '○ '} ${style.name}`,
-        description: style.description,
-        styleId: id,
-      };
-    });
+    if (config.enableExplainMode) {
+      // Switch Explain Style
+      const explainIds: ExplainStyleId[] = ['pragmatic', 'eli5', 'intent'];
+      const items = explainIds.map((id) => {
+        const style = ConfigManager.getInstance().getExplainStyle(id);
+        return {
+          label: `${id === config.explainStyle ? '● ' : '○ '} ${style.name}`,
+          description: style.description,
+          styleId: id,
+        };
+      });
 
-    const selected = await vscode.window.showQuickPick(items, {
-      placeHolder: '选择翻译与解析的提示词风格',
-    });
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: '选择大白话讲解风格',
+      });
 
-    if (selected) {
-      await ConfigManager.getInstance().setActiveStyle(selected.styleId);
-      this.updateLabel();
-      vscode.window.showInformationMessage(`AnyComment: 已切换提示词风格为 [${selected.styleId}]`);
+      if (selected) {
+        await ConfigManager.getInstance().setExplainStyle(selected.styleId as ExplainStyleId);
+        this.updateLabel();
+        vscode.window.showInformationMessage(`AnyComment: 讲解风格已切换为 [${selected.styleId}]`);
+      }
+    } else {
+      // Switch Translation Style
+      const transIds: TranslationStyleId[] = ['tech-native', 'github-dev', 'literal-accurate', 'bilingual-mix', 'custom'];
+      const items = transIds.map((id) => {
+        const style = ConfigManager.getInstance().getTranslationStyle(id);
+        return {
+          label: `${id === config.activeStyle ? '● ' : '○ '} ${style.name}`,
+          description: style.description,
+          styleId: id,
+        };
+      });
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: '选择翻译提示词风格',
+      });
+
+      if (selected) {
+        await ConfigManager.getInstance().setActiveStyle(selected.styleId as TranslationStyleId);
+        this.updateLabel();
+        vscode.window.showInformationMessage(`AnyComment: 翻译风格已切换为 [${selected.styleId}]`);
+      }
     }
   }
 
   private async promptClearCache(): Promise<void> {
     const picks = [
-      { label: '仅清理当前风格的自定义缓存', action: 'current' },
-      { label: '清理所有自定义风格缓存 (保留官方预置标准库)', action: 'all-custom' },
+      { label: '仅清理当前生效风格的自定义缓存', action: 'current' },
+      { label: '清理所有自定义风格与讲解缓存 (保留官方预存标准库)', action: 'all-custom' },
     ];
 
     const pick = await vscode.window.showQuickPick(picks, {
@@ -143,12 +216,13 @@ export class StatusBarManager {
     const storage = StorageManager.getInstance();
     const config = ConfigManager.getInstance().getConfig();
 
+    const activeStyle = config.enableExplainMode ? config.explainStyle : config.activeStyle;
     if (pick.action === 'current') {
-      await storage.clearCustomCache(config.activeStyle);
-      vscode.window.showInformationMessage(`已清空风格 [${config.activeStyle}] 的自定义缓存`);
+      await storage.clearCustomCache(activeStyle);
+      vscode.window.showInformationMessage(`已清空风格 [${activeStyle}] 的自定义缓存`);
     } else if (pick.action === 'all-custom') {
       await storage.clearCustomCache();
-      vscode.window.showInformationMessage('已清空所有自定义风格缓存，官方预存标准库完好保留');
+      vscode.window.showInformationMessage('已清空所有自定义风格与讲解缓存，官方预存标准库完好保留');
     }
   }
 

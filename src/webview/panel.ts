@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ConfigManager } from '../config/index.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { StorageManager } from '../storage/storageManager.js';
-import type { ProviderId, StyleId } from '../config/types.js';
+import type { ProviderId, TranslationStyleId, ExplainStyleId } from '../config/types.js';
 
 /**
  * AnyComment Sidebar Webview View Provider
@@ -29,21 +29,20 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this.getHtmlContent();
 
     webviewView.webview.onDidReceiveMessage(async (data) => {
+      const configMgr = ConfigManager.getInstance();
+
       switch (data.type) {
         case 'refreshState':
           await this.sendCurrentState();
           break;
 
         case 'saveProvider': {
-          const configMgr = ConfigManager.getInstance();
           await configMgr.setActiveProvider(data.providerId as ProviderId);
           if (data.baseURL && data.model) {
             await configMgr.setOpenAIConfig(data.baseURL, data.model);
           }
-          if (typeof data.apiKey === 'string') {
-            if (data.apiKey.trim()) {
-              await configMgr.setOpenAIApiKey(data.apiKey);
-            }
+          if (typeof data.apiKey === 'string' && data.apiKey.trim()) {
+            await configMgr.setOpenAIApiKey(data.apiKey);
           }
           vscode.window.showInformationMessage('AnyComment: 服务配置已更新');
           await this.sendCurrentState();
@@ -51,12 +50,17 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
         }
 
         case 'saveStyle': {
-          const configMgr = ConfigManager.getInstance();
-          await configMgr.setActiveStyle(data.styleId as StyleId);
+          await configMgr.setEnableExplainMode(!!data.enableExplainMode);
+          if (data.activeStyle) {
+            await configMgr.setActiveStyle(data.activeStyle as TranslationStyleId);
+          }
+          if (data.explainStyle) {
+            await configMgr.setExplainStyle(data.explainStyle as ExplainStyleId);
+          }
           if (data.customPrompt) {
             await configMgr.setCustomStylePrompt(data.customPrompt);
           }
-          vscode.window.showInformationMessage('AnyComment: 提示词风格已更新');
+          vscode.window.showInformationMessage('AnyComment: 模式与提示词风格已更新');
           await this.sendCurrentState();
           break;
         }
@@ -82,14 +86,13 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
 
         case 'clearCustomCache': {
           await StorageManager.getInstance().clearCustomCache(data.styleId);
-          vscode.window.showInformationMessage('AnyComment: 自定义风格缓存已清空');
+          vscode.window.showInformationMessage('AnyComment: 自定义风格与讲解缓存已清空');
           await this.sendCurrentState();
           break;
         }
       }
     });
 
-    // Send initial state on load
     this.sendCurrentState();
   }
 
@@ -183,13 +186,15 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
       margin-bottom: 8px;
       font-size: 12px;
     }
-    .badge {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 3px;
-      background: var(--vscode-badge-background);
-      color: var(--vscode-badge-foreground);
-      font-size: 11px;
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+      gap: 8px;
+    }
+    .checkbox-row input {
+      width: auto;
+      margin: 0;
     }
     #testStatus {
       margin-top: 6px;
@@ -202,8 +207,8 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
   <div class="field">
     <label>当前生效通道：</label>
     <select id="providerSelect">
-      <option value="openai">OpenAI Compatible (DeepSeek / Ollama)</option>
-      <option value="vscode-lm">VS Code LM (GitHub Copilot 免Key)</option>
+      <option value="vscode-lm">VS Code LM (GitHub Copilot 官方免Key通道)</option>
+      <option value="openai">OpenAI Compatible (DeepSeek / Ollama / Qwen)</option>
       <option value="google">Google Translate (免费公共机翻)</option>
     </select>
   </div>
@@ -218,7 +223,7 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
       <input type="text" id="openaiModel" placeholder="deepseek-chat" />
     </div>
     <div class="field">
-      <label>API Key (加密保存在 SecretStorage)：</label>
+      <label>API Key (加密存储于 SecretStorage)：</label>
       <input type="password" id="openaiApiKey" placeholder="sk-..." />
     </div>
   </div>
@@ -229,37 +234,52 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
   </div>
   <div id="testStatus"></div>
 
-  <h3>🎨 提示词风格 (Prompt Style)</h3>
-  <div class="field">
-    <label>选择当前风格：</label>
-    <select id="styleSelect">
-      <option value="tech-plain">通俗技术化 (保留关键英文术语)</option>
-      <option value="literal">精确直译 (严格排版对照)</option>
-      <option value="deep-dive">API 深度解析 (含避坑指南)</option>
+  <h3>🎨 提示词风格与大白话讲解</h3>
+  <div class="checkbox-row">
+    <input type="checkbox" id="explainModeCheckbox" />
+    <label for="explainModeCheckbox" style="margin:0; cursor:pointer;"><strong>开启【中文大白话讲解模式】(Cmd+Shift+E)</strong></label>
+  </div>
+
+  <div id="explainStyleGroup" class="field" style="display:none;">
+    <label>大白话讲解风格：</label>
+    <select id="explainStyleSelect">
+      <option value="pragmatic">生产实战务实派 (核心功能 + 场景 + 避坑)</option>
+      <option value="eli5">极简大白话 / 小白秒懂 (生动类比)</option>
+      <option value="intent">架构意图与职责边界 (设计哲学剖析)</option>
+    </select>
+  </div>
+
+  <div id="translateStyleGroup" class="field">
+    <label>翻译提示词风格（沉浸式翻译成熟规范）：</label>
+    <select id="translateStyleSelect">
+      <option value="tech-native">科技专家·术语保留 (保留 Goroutine/Mutex 等原词)</option>
+      <option value="github-dev">开源与 GitHub 风格 (地道开源语境)</option>
+      <option value="literal-accurate">严格逐行对照直译 (结构对齐)</option>
+      <option value="bilingual-mix">双语术语混合对照 (如：互斥锁 (Mutex))</option>
       <option value="custom">自定义提示词</option>
     </select>
   </div>
 
-  <div class="field" id="customPromptGroup">
+  <div class="field" id="customPromptGroup" style="display:none;">
     <label>自定义系统提示词 (System Prompt)：</label>
-    <textarea id="customPromptInput" placeholder="输入你的自定义规则..."></textarea>
+    <textarea id="customPromptInput" placeholder="输入你的自定义翻译规则..."></textarea>
   </div>
 
   <div>
-    <button id="saveStyleBtn">应用风格</button>
+    <button id="saveStyleBtn">应用风格设置</button>
   </div>
 
   <h3>💾 存储与本地缓存治理</h3>
   <div class="card">
-    <div><strong>📦 分区 1 (标准库与基线)：</strong></div>
-    <div id="stdStats">已加载官方预置文档与基线...</div>
+    <div><strong>📦 分区 1 (标准库预置与基准)：</strong></div>
+    <div id="stdStats">已加载标准库种子包与基线...</div>
   </div>
   <div class="card">
-    <div><strong>🎨 分区 2 (自定义 AI 风格)：</strong></div>
-    <div id="customStats">已缓存自定义解析...</div>
+    <div><strong>🎨 分区 2 (自定义风格与讲解)：</strong></div>
+    <div id="customStats">已缓存独立风格条目...</div>
   </div>
   <div>
-    <button id="clearCustomBtn" class="secondary">清空自定义风格缓存</button>
+    <button id="clearCustomBtn" class="secondary">清空自定义风格与讲解缓存</button>
   </div>
 
   <script>
@@ -274,7 +294,11 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
     const testConnectionBtn = document.getElementById('testConnectionBtn');
     const testStatus = document.getElementById('testStatus');
 
-    const styleSelect = document.getElementById('styleSelect');
+    const explainModeCheckbox = document.getElementById('explainModeCheckbox');
+    const explainStyleGroup = document.getElementById('explainStyleGroup');
+    const explainStyleSelect = document.getElementById('explainStyleSelect');
+    const translateStyleGroup = document.getElementById('translateStyleGroup');
+    const translateStyleSelect = document.getElementById('translateStyleSelect');
     const customPromptGroup = document.getElementById('customPromptGroup');
     const customPromptInput = document.getElementById('customPromptInput');
     const saveStyleBtn = document.getElementById('saveStyleBtn');
@@ -287,8 +311,14 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
       openaiConfigGroup.style.display = providerSelect.value === 'openai' ? 'block' : 'none';
     });
 
-    styleSelect.addEventListener('change', () => {
-      customPromptGroup.style.display = styleSelect.value === 'custom' ? 'block' : 'none';
+    explainModeCheckbox.addEventListener('change', () => {
+      const isExplain = explainModeCheckbox.checked;
+      explainStyleGroup.style.display = isExplain ? 'block' : 'none';
+      translateStyleGroup.style.display = isExplain ? 'none' : 'block';
+    });
+
+    translateStyleSelect.addEventListener('change', () => {
+      customPromptGroup.style.display = translateStyleSelect.value === 'custom' ? 'block' : 'none';
     });
 
     saveProviderBtn.addEventListener('click', () => {
@@ -312,7 +342,9 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
     saveStyleBtn.addEventListener('click', () => {
       vscode.postMessage({
         type: 'saveStyle',
-        styleId: styleSelect.value,
+        enableExplainMode: explainModeCheckbox.checked,
+        activeStyle: translateStyleSelect.value,
+        explainStyle: explainStyleSelect.value,
         customPrompt: customPromptInput.value
       });
     });
@@ -335,20 +367,24 @@ export class AnyCommentViewProvider implements vscode.WebviewViewProvider {
           openaiApiKey.placeholder = '已配置 (输入新 Key 覆写)';
         }
 
-        styleSelect.value = config.activeStyle;
+        explainModeCheckbox.checked = !!config.enableExplainMode;
+        explainStyleGroup.style.display = config.enableExplainMode ? 'block' : 'none';
+        translateStyleGroup.style.display = config.enableExplainMode ? 'none' : 'block';
+        explainStyleSelect.value = config.explainStyle || 'pragmatic';
+
+        translateStyleSelect.value = config.activeStyle || 'tech-native';
         customPromptGroup.style.display = config.activeStyle === 'custom' ? 'block' : 'none';
         customPromptInput.value = config.customStylePrompt || '';
 
         const stats = msg.storageStats;
         stdStats.innerText = '预置种子: ' + stats.standard.seedCount + ' 条 | 基准缓存: ' + stats.standard.cacheCount + ' 条';
-        customStats.innerText = '独立风格条目: ' + stats.custom.totalCount + ' 条 (已与标准库物理隔离)';
+        customStats.innerText = '独立风格与讲解条目: ' + stats.custom.totalCount + ' 条 (已与标准库物理隔离)';
       } else if (msg.type === 'testResult') {
         testStatus.innerText = (msg.success ? '✅ ' : '❌ ') + msg.message;
         testStatus.style.color = msg.success ? '#4ec9b0' : '#f48771';
       }
     });
 
-    // Request initial state
     vscode.postMessage({ type: 'refreshState' });
   </script>
 </body>
