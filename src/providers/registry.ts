@@ -54,7 +54,17 @@ export class ProviderRegistry {
       return await activeProvider.translate(request);
     } catch (err: unknown) {
       console.warn(`[AnyComment] Active provider ${activeProvider.id} failed:`, err);
-      // If primary failed and was not Google, fall back to Google Translate baseline
+      // Try VS Code LM (Copilot) if active was not vscode-lm
+      if (activeProvider.id !== 'vscode-lm') {
+        try {
+          const vsCodeLm = this.getProvider('vscode-lm');
+          console.info('[AnyComment] Falling back to VS Code LM (Copilot)...');
+          return await vsCodeLm.translate(request);
+        } catch {
+          // Continue to Google Translate baseline
+        }
+      }
+      // Finally fall back to Google Translate baseline
       if (activeProvider.id !== 'google') {
         const googleProvider = this.getProvider('google');
         console.info('[AnyComment] Falling back to Google Translate baseline...');

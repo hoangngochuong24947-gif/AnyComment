@@ -45,7 +45,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerWebviewViewProvider(AnyCommentViewProvider.viewType, viewProvider)
   );
 
-  // 8. Register translateHover command
+  // 8. Dedicated inline loading badge decoration
+  const loadingDecorationType = vscode.window.createTextEditorDecorationType({
+    after: {
+      margin: '0 0 0 1.5em',
+      color: '#e5c07b',
+      fontStyle: 'italic',
+      fontWeight: 'bold',
+    },
+    rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
+  });
+  context.subscriptions.push(loadingDecorationType);
+
+  // 9. Register translateHover command
   const translateHoverCmd = vscode.commands.registerCommand(
     'anycomment.translateHover',
     async (args?: {
@@ -105,6 +117,22 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const actionTitle = isExplain ? `大白话讲解 (${style.name})` : `翻译 (${style.name})`;
 
+      // 1. Immediately place an inline loading indicator so user gets instant visual confirmation in code
+      const editor = vscode.window.activeTextEditor;
+      if (editor && args?.position) {
+        const line = editor.document.lineAt(args.position.line);
+        editor.setDecorations(loadingDecorationType, [
+          {
+            range: line.range,
+            renderOptions: {
+              after: {
+                contentText: `  ⏳ [AnyComment 正在生成 ${actionTitle}... 请稍候]`,
+              },
+            },
+          },
+        ]);
+      }
+
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -139,22 +167,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               );
             }
 
+            // Clear loading decoration
+            if (editor) {
+              editor.setDecorations(loadingDecorationType, []);
+            }
+
             // Refresh decorations and views
             immersiveDecorator.updateActiveEditor();
             viewProvider.sendCurrentState();
 
-            // Re-trigger hover card in place at target position without popup toast
-            const editor = vscode.window.activeTextEditor;
+            // Re-trigger hover card in place at target position with active editor focus
             if (editor) {
               if (args?.position) {
                 const pos = new vscode.Position(args.position.line, args.position.character);
                 editor.selection = new vscode.Selection(pos, pos);
               }
+              await vscode.window.showTextDocument(editor.document, {
+                viewColumn: editor.viewColumn,
+                preserveFocus: false,
+              });
               await vscode.commands.executeCommand('editor.action.showHover');
             } else {
               vscode.window.setStatusBarMessage(`AnyComment: ${actionTitle}已完成并缓存`, 3000);
             }
           } catch (err: unknown) {
+            if (editor) {
+              editor.setDecorations(loadingDecorationType, []);
+            }
             const message = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`AnyComment 处理失败: ${message}`);
           }
