@@ -83,7 +83,7 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
 
       md.appendMarkdown(`---\n`);
       md.appendMarkdown(
-        `[📖 代码内联透视 (Code Peek)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
+        `[📖 打开代码内联透视 (方案 B 推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
       );
       const refreshPayload = { ...basePayload, forceRefresh: true };
       md.appendMarkdown(
@@ -92,11 +92,11 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
     } else {
       md.appendMarkdown(`---\n`);
       md.appendMarkdown(
-        `[📖 打开代码内联透视 (推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
+        `[📖 打开代码内联透视 (方案 B 推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
       );
       const transPayload = { ...basePayload, forceTranslate: true };
       md.appendMarkdown(
-        `[🌐 悬停卡片直译](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})\n`
+        `[🌐 极速悬停直译](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})\n`
       );
     }
 

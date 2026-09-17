@@ -33,28 +33,92 @@ export class GoogleTranslateProvider implements ITranslationProvider {
     const sourceText = request.sourceText;
     const targetLang = request.targetLang === 'zh-CN' ? 'zh-CN' : request.targetLang;
 
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
+    // 1. Primary fast channel: Google Translate via official Chrome Dictionary client
+    try {
+      const url = `https://translate.googleapis.com/translate_a/single?client=dict-chrome-ex&sl=auto&tl=${encodeURIComponent(
+        targetLang
+      )}&dt=t&q=${encodeURIComponent(sourceText)}`;
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AnyComment/0.2.0',
+        },
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (response.ok) {
+        const data: unknown = await response.json();
+        if (isGoogleTranslateResponse(data)) {
+          const segments = data[0];
+          const translatedText = segments.map((item) => item[0] ?? '').join('').trim();
+          if (translatedText) {
+            return {
+              translatedText,
+              providerId: this.id,
+              model: 'google-dict-chrome-ex',
+              latencyMs: Date.now() - startTime,
+            };
+          }
+        }
+      }
+    } catch (err: unknown) {
+      console.warn('[AnyComment] Google dict-chrome-ex channel failed, attempting fallback...', err);
+    }
+
+    // 2. Secondary fallback channel: MyMemory public translation API
+    try {
+      const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+        sourceText
+      )}&langpair=auto|${encodeURIComponent(targetLang)}`;
+
+      const mmResponse = await fetch(myMemoryUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AnyComment/0.2.0',
+        },
+        signal: AbortSignal.timeout(3000),
+      });
+
+      if (mmResponse.ok) {
+        const mmData = (await mmResponse.json()) as { responseData?: { translatedText?: string } };
+        const translatedText = mmData.responseData?.translatedText?.trim();
+        if (translatedText) {
+          return {
+            translatedText,
+            providerId: this.id,
+            model: 'mymemory-mt',
+            latencyMs: Date.now() - startTime,
+          };
+        }
+      }
+    } catch (err: unknown) {
+      console.warn('[AnyComment] MyMemory fallback channel failed:', err);
+    }
+
+    // 3. Final baseline channel: Google Translate gtx
+    const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(
       targetLang
     )}&dt=t&q=${encodeURIComponent(sourceText)}`;
 
-    const response = await fetch(url, {
+    const gtxResponse = await fetch(gtxUrl, {
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AnyComment/0.1.0',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AnyComment/0.2.0',
       },
+      signal: AbortSignal.timeout(3000),
     });
 
-    if (!response.ok) {
-      throw new Error(`Google Translate 请求失败: HTTP ${response.status}`);
+    if (!gtxResponse.ok) {
+      throw new Error(`公共翻译通道暂时不可用 (HTTP ${gtxResponse.status})`);
     }
 
-    const data: unknown = await response.json();
-
-    if (!isGoogleTranslateResponse(data)) {
-      throw new Error('Google Translate 返回数据结构异常');
+    const gtxData: unknown = await gtxResponse.json();
+    if (!isGoogleTranslateResponse(gtxData)) {
+      throw new Error('公共翻译返回数据结构异常');
     }
 
-    const segments = data[0];
+    const segments = gtxData[0];
     const translatedText = segments.map((item) => item[0] ?? '').join('').trim();
 
     return {

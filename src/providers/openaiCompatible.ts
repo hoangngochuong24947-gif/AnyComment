@@ -38,6 +38,13 @@ export class OpenAICompatibleProvider implements ITranslationProvider {
       baseURL = `${baseURL}/v1`;
     }
 
+    const isLocal = baseURL.includes('localhost') || baseURL.includes('127.0.0.1');
+    if (!apiKey && !isLocal) {
+      throw new Error(
+        '未配置大模型 API Key。如需开启通俗解读，请在命令面板输入 AnyComment: Set API Key；当前已自动切换至极速公共通道。'
+      );
+    }
+
     const systemPrompt = request.style.systemPrompt.replace(/\{target_lang\}/g, request.targetLang);
     const userPrompt = request.style.userPromptTemplate
       .replace(/\{text\}/g, request.sourceText)
@@ -64,6 +71,7 @@ export class OpenAICompatibleProvider implements ITranslationProvider {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (!response.ok) {

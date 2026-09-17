@@ -10,6 +10,7 @@ import { AnyCommentViewProvider } from './webview/panel.js';
 import { OnboardingWizard } from './features/onboarding.js';
 import { PeekManager } from './features/peekManager.js';
 import { CommentExtractor } from './parser/commentExtractor.js';
+import { StreamAnimator } from './features/streamAnimator.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('[AnyComment] Activating personal translation extension...');
@@ -47,17 +48,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerWebviewViewProvider(AnyCommentViewProvider.viewType, viewProvider)
   );
 
-  // 8. Dedicated inline loading badge decoration
-  const loadingDecorationType = vscode.window.createTextEditorDecorationType({
-    after: {
-      margin: '0 0 0 1.5em',
-      color: '#e5c07b',
-      fontStyle: 'italic',
-      fontWeight: 'bold',
-    },
-    rangeBehavior: vscode.DecorationRangeBehavior.ClosedOpen,
-  });
-  context.subscriptions.push(loadingDecorationType);
+  // 8. Stream & Waiting Animator
+  const streamAnimator = StreamAnimator.getInstance();
+  context.subscriptions.push(streamAnimator);
 
   // 9. Register translateHover command
   const translateHoverCmd = vscode.commands.registerCommand(
@@ -119,20 +112,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       const actionTitle = isExplain ? `大白话讲解 (${style.name})` : `翻译 (${style.name})`;
 
-      // 1. Immediately place an inline loading indicator so user gets instant visual confirmation in code
+      // 1. Immediately place an inline restrained waiting animation on the target line
       const editor = vscode.window.activeTextEditor;
       if (editor && args?.position) {
-        const line = editor.document.lineAt(args.position.line);
-        editor.setDecorations(loadingDecorationType, [
-          {
-            range: line.range,
-            renderOptions: {
-              after: {
-                contentText: `  ⏳ [AnyComment 正在生成 ${actionTitle}... 请稍候]`,
-              },
-            },
-          },
-        ]);
+        StreamAnimator.getInstance().start(editor, args.position.line, `正在生成 ${actionTitle}`);
       }
 
       await vscode.window.withProgress(
@@ -169,10 +152,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               );
             }
 
-            // Clear loading decoration
-            if (editor) {
-              editor.setDecorations(loadingDecorationType, []);
-            }
+            // Stop waiting animation and display crisp Chinese preview
+            StreamAnimator.getInstance().stop(
+              response.translatedText.length > 20
+                ? `${response.translatedText.slice(0, 20)}...`
+                : response.translatedText
+            );
 
             // Refresh decorations and views
             immersiveDecorator.updateActiveEditor();
@@ -188,14 +173,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 viewColumn: editor.viewColumn,
                 preserveFocus: false,
               });
-              await vscode.commands.executeCommand('editor.action.showHover');
+              // Delay slightly so VS Code's editor focus settles before showing hover
+              setTimeout(() => {
+                vscode.commands.executeCommand('editor.action.showHover');
+              }, 80);
             } else {
               vscode.window.setStatusBarMessage(`AnyComment: ${actionTitle}已完成并缓存`, 3000);
             }
           } catch (err: unknown) {
-            if (editor) {
-              editor.setDecorations(loadingDecorationType, []);
-            }
+            StreamAnimator.getInstance().stop();
             const message = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`AnyComment 处理失败: ${message}`);
           }
@@ -205,7 +191,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   context.subscriptions.push(translateHoverCmd);
 
-  // 10. Initialize PeekManager (Variant C: Inline Peek Drawer)
+  // 10. Initialize PeekManager (Variant B: Native Code Peek)
   PeekManager.initialize(context);
 
   const openPeekCmd = vscode.commands.registerCommand(
@@ -217,11 +203,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       isExplain?: boolean;
       forceExplain?: boolean;
       forceTranslate?: boolean;
+      forceRefresh?: boolean;
       signature?: string;
     }) => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showWarningMessage('请先打开代码文件再使用行间透视抽屉');
+        vscode.window.showWarningMessage('请先打开代码文件再使用代码内联透视');
         return;
       }
 
@@ -246,7 +233,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (!text) {
         text = await vscode.window.showInputBox({
-          prompt: '请输入要在透视抽屉中解析的文本或注释：',
+          prompt: '请输入要在代码内联透视中解析的文本或注释：',
         });
       }
 
@@ -257,6 +244,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         position,
         text,
         signature,
+        forceRefresh: args?.forceRefresh,
+        editor,
       });
     }
   );

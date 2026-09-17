@@ -3,6 +3,7 @@ import * as path from 'path';
 import { StorageManager } from '../storage/storageManager.js';
 import { ConfigManager } from '../config/index.js';
 import { ProviderRegistry } from '../providers/registry.js';
+import { StreamAnimator } from './streamAnimator.js';
 
 /**
  * In-memory virtual document provider for Code Peek View
@@ -47,20 +48,27 @@ export class PeekManager {
     position: vscode.Position;
     text: string;
     signature?: string;
+    forceRefresh?: boolean;
+    editor?: vscode.TextEditor;
   }): Promise<void> {
     const configMgr = ConfigManager.getInstance();
     const config = configMgr.getConfig();
     const storageMgr = StorageManager.getInstance();
+    const editor = options.editor ?? vscode.window.activeTextEditor;
 
     const fileName = path.basename(options.document.fileName);
     const virtualUri = vscode.Uri.parse(
       `${AnyCommentDocContentProvider.scheme}://${encodeURIComponent(fileName)} - 代码内联透视.md`
     );
 
-    const cachedLiteral = storageMgr.get(options.text, config.targetLanguage, 'literal-accurate');
-    const cachedExplain = storageMgr.get(options.text, config.targetLanguage, config.explainStyle);
+    const cachedLiteral = options.forceRefresh
+      ? null
+      : storageMgr.get(options.text, config.targetLanguage, 'literal-accurate');
+    const cachedExplain = options.forceRefresh
+      ? null
+      : storageMgr.get(options.text, config.targetLanguage, config.explainStyle);
 
-    // 1. If both are cached, render full document immediately
+    // 1. If both are cached, render full document immediately in 0ms
     if (cachedLiteral && cachedExplain) {
       const fullDoc = PeekManager.formatDocument({
         fileName,
@@ -82,7 +90,7 @@ export class PeekManager {
       return;
     }
 
-    // 2. Open peek view immediately in 0ms with loading state
+    // 2. Open peek view immediately with structured loading skeleton
     const loadingDoc = PeekManager.formatLoadingDocument({
       fileName,
       provider: config.activeProvider,
@@ -90,6 +98,11 @@ export class PeekManager {
       signature: options.signature,
     });
     PeekManager.docProvider.setContent(virtualUri, loadingDoc);
+
+    // Start restrained inline waiting pulse on editor line
+    if (editor) {
+      StreamAnimator.getInstance().start(editor, options.position.line, '正在生成代码透视与双语对照');
+    }
 
     await vscode.commands.executeCommand(
       'editor.action.peekLocations',
@@ -99,12 +112,12 @@ export class PeekManager {
       'peek'
     );
 
-    // 3. Asynchronously fetch literal translation & technical interpretation
+    // 3. Asynchronously fetch literal translation & technical interpretation progressively
     try {
       let literalText = cachedLiteral?.translation;
       let explainText = cachedExplain?.translation;
 
-      // 3.1 Fetch literal if missing
+      // 3.1 Fetch literal first (fast MT / baseline, usually ~200-800ms)
       if (!literalText) {
         try {
           const googleRes = await ProviderRegistry.getInstance().getProvider('google').translate({
@@ -119,8 +132,19 @@ export class PeekManager {
             literalText,
             'google'
           );
+
+          // Progressive live update: show Chinese literal translation immediately as soon as ready!
+          const progressiveDoc = PeekManager.formatDocument({
+            fileName,
+            literal: literalText,
+            explanation: '> ⏳ 正在深度解析代码上下文并生成工程师通俗解读，即将就绪...',
+            sourceText: options.text,
+            signature: options.signature,
+            isCached: false,
+          });
+          PeekManager.docProvider.setContent(virtualUri, progressiveDoc);
         } catch {
-          literalText = '(机翻暂时不可用)';
+          literalText = '(公共翻译通道暂不可用，等待大模型解读)';
         }
       }
 
@@ -154,19 +178,22 @@ export class PeekManager {
         );
       }
 
-      // 4. Live update open Peek View with pristine bilingual contrast
+      // 4. Live update open Peek View with finalized bilingual contrast
       const resolvedDoc = PeekManager.formatDocument({
         fileName,
-        literal: literalText,
-        explanation: explainText,
+        literal: literalText || '(未获取到直译)',
+        explanation: explainText || '(未获取到技术解读)',
         sourceText: options.text,
         signature: options.signature,
         isCached: false,
       });
       PeekManager.docProvider.setContent(virtualUri, resolvedDoc);
+
+      StreamAnimator.getInstance().stop('中文解析已就绪');
     } catch (err: unknown) {
+      StreamAnimator.getInstance().stop();
       const message = err instanceof Error ? err.message : String(err);
-      const errorDoc = `# ❌ AnyComment 解析失败\n\n**错误信息**: ${message}\n\n请检查网络或大模型配置。`;
+      const errorDoc = `# ❌ AnyComment 解析失败\n\n**提示信息**: ${message}\n\n可在命令面板使用 \`AnyComment: Set API Key\` 配置大模型密钥。`;
       PeekManager.docProvider.setContent(virtualUri, errorDoc);
     }
   }
@@ -180,10 +207,19 @@ export class PeekManager {
     return [
       `# 📖 代码内联透视: ${data.fileName}`,
       '',
-      `> ⏳ 正在调用 **[${data.provider}]** 分析代码上下文并生成双语对照与技术解读，请稍候...`,
+      `_⚡ 状态: 正在联机生成中文对照与技术解读..._`,
       '',
-      data.signature ? `### 🔍 关联代码签名\n\`\`\`\n${data.signature}\n\`\`\`\n` : '',
-      '### 📄 原始代码注释',
+      '---',
+      '### 🌐 中文直译 (Literal Translation)',
+      '> ⏳ 正在联机解析英文注释语义，即将呈现准确中文直译...',
+      '',
+      '---',
+      '### 💡 工程师通俗解读 (Plain Technical Interpretation)',
+      '> ⏳ 正在结合代码上下文推导技术原理与底层逻辑...',
+      '',
+      data.signature ? `--- \n### 🔍 关联代码签名\n\`\`\`\n${data.signature}\n\`\`\`\n` : '',
+      '---',
+      '### 📄 原始代码注释对照',
       '```',
       data.sourceText,
       '```',
