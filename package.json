@@ -160,7 +160,8 @@
     "watch": "node esbuild.config.js --watch",
     "test": "vitest run",
     "lint": "tsc --noEmit",
-    "package": "vsce package"
+    "package": "vsce package",
+    "prototype": "open prototypes/hover-feedback-experience.html"
   },
   "packageManager": "pnpm@11.5.1",
   "devDependencies": {
