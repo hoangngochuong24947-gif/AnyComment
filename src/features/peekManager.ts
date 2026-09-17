@@ -5,8 +5,8 @@ import { ConfigManager } from '../config/index.js';
 import { ProviderRegistry } from '../providers/registry.js';
 
 /**
- * In-memory virtual document provider for Peek View
- * URI scheme: anycomment-peek://<filename> - <action>.md
+ * In-memory virtual document provider for Code Peek View
+ * URI scheme: anycomment-peek://<filename> - CodePeek.md
  */
 export class AnyCommentDocContentProvider implements vscode.TextDocumentContentProvider {
   public static readonly scheme = 'anycomment-peek';
@@ -16,7 +16,7 @@ export class AnyCommentDocContentProvider implements vscode.TextDocumentContentP
   private contents = new Map<string, string>();
 
   public provideTextDocumentContent(uri: vscode.Uri): string {
-    return this.contents.get(uri.toString()) ?? '# AnyComment\n\n正在加载内容...';
+    return this.contents.get(uri.toString()) ?? '# AnyComment\n\n正在加载代码内联透视内容...';
   }
 
   public setContent(uri: vscode.Uri, content: string): void {
@@ -26,7 +26,7 @@ export class AnyCommentDocContentProvider implements vscode.TextDocumentContentP
 }
 
 /**
- * Manages Variant C: Inline Peek Drawer between code lines
+ * Manages Code Peek View (代码内联透视) between code lines
  * Leverages native VS Code editor.action.peekLocations with zero external dependencies
  */
 export class PeekManager {
@@ -46,34 +46,28 @@ export class PeekManager {
     document: vscode.TextDocument;
     position: vscode.Position;
     text: string;
-    isExplain?: boolean;
     signature?: string;
   }): Promise<void> {
     const configMgr = ConfigManager.getInstance();
     const config = configMgr.getConfig();
     const storageMgr = StorageManager.getInstance();
-    const isExplain = options.isExplain ?? config.enableExplainMode;
-    const style = isExplain
-      ? configMgr.getExplainStyle(config.explainStyle)
-      : configMgr.getTranslationStyle(config.activeStyle);
 
     const fileName = path.basename(options.document.fileName);
-    const actionTitle = isExplain ? `大白话解析 (${style.name})` : `翻译 (${style.name})`;
     const virtualUri = vscode.Uri.parse(
-      `${AnyCommentDocContentProvider.scheme}://${encodeURIComponent(fileName)} - ${encodeURIComponent(actionTitle)}.md`
+      `${AnyCommentDocContentProvider.scheme}://${encodeURIComponent(fileName)} - 代码内联透视.md`
     );
 
-    const activeStyleId = isExplain ? config.explainStyle : config.activeStyle;
-    const cached = storageMgr.get(options.text, config.targetLanguage, activeStyleId);
+    const cachedLiteral = storageMgr.get(options.text, config.targetLanguage, 'literal-accurate');
+    const cachedExplain = storageMgr.get(options.text, config.targetLanguage, config.explainStyle);
 
-    if (cached) {
-      // 1. If already cached, render full formatted document immediately
+    // 1. If both are cached, render full document immediately
+    if (cachedLiteral && cachedExplain) {
       const fullDoc = PeekManager.formatDocument({
-        title: actionTitle,
-        content: cached.translation,
+        fileName,
+        literal: cachedLiteral.translation,
+        explanation: cachedExplain.translation,
         sourceText: options.text,
         signature: options.signature,
-        model: cached.styleId || cached.source,
         isCached: true,
       });
       PeekManager.docProvider.setContent(virtualUri, fullDoc);
@@ -88,9 +82,9 @@ export class PeekManager {
       return;
     }
 
-    // 2. If not cached, render instant loading skeleton and pop peek drawer immediately (0ms)
+    // 2. Open peek view immediately in 0ms with loading state
     const loadingDoc = PeekManager.formatLoadingDocument({
-      title: actionTitle,
+      fileName,
       provider: config.activeProvider,
       sourceText: options.text,
       signature: options.signature,
@@ -105,75 +99,90 @@ export class PeekManager {
       'peek'
     );
 
-    // 3. Asynchronously fetch from provider
+    // 3. Asynchronously fetch literal translation & technical interpretation
     try {
-      let userPrompt = style.userPromptTemplate;
-      if (options.signature) {
-        userPrompt = userPrompt.replace(/\{context_info\}/g, `[代码上下文定义]:\n\`\`\`\n${options.signature}\n\`\`\``);
-      } else {
-        userPrompt = userPrompt.replace(/\{context_info\}\n*/g, '');
+      let literalText = cachedLiteral?.translation;
+      let explainText = cachedExplain?.translation;
+
+      // 3.1 Fetch literal if missing
+      if (!literalText) {
+        try {
+          const googleRes = await ProviderRegistry.getInstance().getProvider('google').translate({
+            sourceText: options.text,
+            targetLang: config.targetLanguage,
+            style: configMgr.getTranslationStyle('literal-accurate'),
+          });
+          literalText = googleRes.translatedText;
+          await storageMgr.saveStandardTranslation(
+            options.text,
+            config.targetLanguage,
+            literalText,
+            'google'
+          );
+        } catch {
+          literalText = '(机翻暂时不可用)';
+        }
       }
 
-      const effectiveStyle = {
-        ...style,
-        userPromptTemplate: userPrompt,
-      };
+      // 3.2 Fetch plain technical explanation if missing
+      if (!explainText) {
+        const explainStyle = configMgr.getExplainStyle(config.explainStyle);
+        let userPrompt = explainStyle.userPromptTemplate;
+        if (options.signature) {
+          userPrompt = userPrompt.replace(
+            /\{context_info\}/g,
+            `[代码上下文定义]:\n\`\`\`\n${options.signature}\n\`\`\``
+          );
+        } else {
+          userPrompt = userPrompt.replace(/\{context_info\}\n*/g, '');
+        }
 
-      const response = await ProviderRegistry.getInstance().executeTranslation({
-        sourceText: options.text,
-        targetLang: config.targetLanguage,
-        style: effectiveStyle,
-      });
+        const explainRes = await ProviderRegistry.getInstance().executeTranslation({
+          sourceText: options.text,
+          targetLang: config.targetLanguage,
+          style: { ...explainStyle, userPromptTemplate: userPrompt },
+        });
 
-      // Save to storage
-      if (!isExplain && (response.providerId === 'google' || style.id === 'literal-accurate')) {
-        await storageMgr.saveStandardTranslation(
-          options.text,
-          config.targetLanguage,
-          response.translatedText,
-          response.providerId === 'google' ? 'google' : 'standard_ai'
-        );
-      } else {
+        explainText = explainRes.translatedText;
         await storageMgr.saveCustomTranslation(
           options.text,
           config.targetLanguage,
-          style.id,
-          response.translatedText,
-          response.model,
-          response.providerId
+          explainStyle.id,
+          explainText,
+          explainRes.model,
+          explainRes.providerId
         );
       }
 
-      // 4. Live update the open peek drawer
+      // 4. Live update open Peek View with pristine bilingual contrast
       const resolvedDoc = PeekManager.formatDocument({
-        title: actionTitle,
-        content: response.translatedText,
+        fileName,
+        literal: literalText,
+        explanation: explainText,
         sourceText: options.text,
         signature: options.signature,
-        model: response.model,
-        latencyMs: response.latencyMs,
         isCached: false,
       });
       PeekManager.docProvider.setContent(virtualUri, resolvedDoc);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      const errorDoc = `# ❌ AnyComment 处理失败\n\n**错误信息**: ${message}\n\n请检查网络或大模型配置。`;
+      const errorDoc = `# ❌ AnyComment 解析失败\n\n**错误信息**: ${message}\n\n请检查网络或大模型配置。`;
       PeekManager.docProvider.setContent(virtualUri, errorDoc);
     }
   }
 
   private static formatLoadingDocument(data: {
-    title: string;
+    fileName: string;
     provider: string;
     sourceText: string;
     signature?: string;
   }): string {
     return [
-      `# 💡 AnyComment ${data.title}`,
+      `# 📖 代码内联透视: ${data.fileName}`,
       '',
-      `> ⏳ 正在调用 **[${data.provider}]** 分析代码上下文并生成大白话拆解，请稍候...`,
+      `> ⏳ 正在调用 **[${data.provider}]** 分析代码上下文并生成双语对照与技术解读，请稍候...`,
       '',
-      data.signature ? `### 🔍 上下文签名定义\n\`\`\`\n${data.signature}\n\`\`\`\n` : '',
+      data.signature ? `### 🔍 关联代码签名\n\`\`\`\n${data.signature}\n\`\`\`\n` : '',
       '### 📄 原始代码注释',
       '```',
       data.sourceText,
@@ -182,29 +191,29 @@ export class PeekManager {
   }
 
   private static formatDocument(data: {
-    title: string;
-    content: string;
+    fileName: string;
+    literal: string;
+    explanation: string;
     sourceText: string;
     signature?: string;
-    model?: string;
-    latencyMs?: number;
     isCached: boolean;
   }): string {
-    const meta = [
-      data.model ? `模型: \`${data.model}\`` : '',
-      data.latencyMs ? `耗时: \`${data.latencyMs}ms\`` : '',
-      data.isCached ? '状态: `本地分隔离缓存秒出`' : '状态: `AI 实时解析生成`',
-    ].filter(Boolean).join(' · ');
+    const statusTag = data.isCached ? '状态: `本地分隔离缓存秒出`' : '状态: `AI 实时解析生成`';
 
     return [
-      `# 💡 AnyComment ${data.title}`,
-      meta ? `_${meta}_\n` : '',
+      `# 📖 代码内联透视: ${data.fileName}`,
+      `_${statusTag}_\n`,
       '---',
-      '### 📌 核心解析与通俗说明',
-      data.content,
+      '### 🌐 中文直译 (Literal Translation)',
+      data.literal,
       '',
-      data.signature ? `### 🔍 关联代码签名\n\`\`\`\n${data.signature}\n\`\`\`\n` : '',
-      '### 📄 原始内容对照',
+      '---',
+      '### 💡 工程师通俗解读 (Plain Technical Interpretation)',
+      data.explanation,
+      '',
+      data.signature ? `--- \n### 🔍 关联代码签名\n\`\`\`\n${data.signature}\n\`\`\`\n` : '',
+      '---',
+      '### 📄 原始代码注释对照',
       '```',
       data.sourceText,
       '```',

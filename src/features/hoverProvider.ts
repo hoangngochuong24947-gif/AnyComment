@@ -55,14 +55,15 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
 
     const config = ConfigManager.getInstance().getConfig();
     const storage = StorageManager.getInstance();
-    const activeStyleId = config.enableExplainMode ? config.explainStyle : config.activeStyle;
-    const cached = storage.get(targetText, config.targetLanguage, activeStyleId);
+
+    const cachedLiteral = storage.get(targetText, config.targetLanguage, 'literal-accurate');
+    const cachedExplain = storage.get(targetText, config.targetLanguage, config.explainStyle);
 
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
     md.supportHtml = true;
 
-    // Coordinates to pass to command for in-place re-display via editor.action.showHover
+    // Coordinates to pass to command
     const basePayload = {
       text: targetText,
       uri: document.uri.toString(),
@@ -70,54 +71,32 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
       signature: associatedSignature,
     };
 
-    if (cached) {
-      const isExplain = config.enableExplainMode;
-      const titleBadge = isExplain
-        ? `💡 AnyComment 大白话讲解 [${config.explainStyle}]`
-        : cached.partition === 'custom'
-        ? `🎨 AnyComment [${config.activeStyle}]`
-        : cached.source === 'seed'
-        ? '📦 官方标准库预置'
-        : '🌐 标准基线';
+    if (cachedLiteral || cachedExplain) {
+      md.appendMarkdown(`---\n### 💡 AnyComment 双语对照与技术解读\n\n`);
 
-      // Clean display without destructive blockquote '>' so multi-line code/lists render cleanly
-      md.appendMarkdown(`---\n### ${titleBadge}\n\n${cached.translation}\n\n---\n`);
-
-      // In-place action links
-      if (isExplain) {
-        const transPayload = { ...basePayload, forceTranslate: true };
-        md.appendMarkdown(
-          `[🌐 切换并查看客观直译](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})  |  `
-        );
-      } else {
-        const explainPayload = { ...basePayload, forceExplain: true };
-        md.appendMarkdown(
-          `[💡 大白话讲讲这个](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(explainPayload))}`)})  |  `
-        );
+      if (cachedLiteral) {
+        md.appendMarkdown(`#### 🌐 中文直译\n${cachedLiteral.translation}\n\n`);
       }
-
-      const refreshPayload = { ...basePayload, forceRefresh: true };
-      md.appendMarkdown(
-        `[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(refreshPayload))}`)})  |  `
-      );
-
-      // Open in Peek Drawer (Variant C)
-      md.appendMarkdown(
-        `[📖 行间透视抽屉 (Peek)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})\n`
-      );
-    } else {
-      const transPayload = { ...basePayload, forceTranslate: true };
-      const explainPayload = { ...basePayload, forceExplain: true };
+      if (cachedExplain) {
+        md.appendMarkdown(`#### 💡 工程师通俗解读\n${cachedExplain.translation}\n\n`);
+      }
 
       md.appendMarkdown(`---\n`);
       md.appendMarkdown(
-        `[💡 大白话抽屉 (推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify({ ...basePayload, forceExplain: true }))}`)})  |  `
+        `[📖 代码内联透视 (Code Peek)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
       );
+      const refreshPayload = { ...basePayload, forceRefresh: true };
       md.appendMarkdown(
-        `[🌐 翻译抽屉](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify({ ...basePayload, forceTranslate: true }))}`)})  |  `
+        `[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(refreshPayload))}`)})\n`
       );
+    } else {
+      md.appendMarkdown(`---\n`);
       md.appendMarkdown(
-        `[悬停卡片直译](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})\n`
+        `[📖 打开代码内联透视 (推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
+      );
+      const transPayload = { ...basePayload, forceTranslate: true };
+      md.appendMarkdown(
+        `[🌐 悬停卡片直译](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})\n`
       );
     }
 

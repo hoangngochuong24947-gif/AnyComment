@@ -252,13 +252,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (!text) return;
 
-      const isExplain = args?.forceExplain ?? (args?.forceTranslate ? false : (args?.isExplain ?? true));
-
       await PeekManager.openPeek({
         document: editor.document,
         position,
         text,
-        isExplain,
         signature,
       });
     }

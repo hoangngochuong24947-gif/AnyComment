@@ -55,7 +55,7 @@
       },
       {
         "command": "anycomment.openPeek",
-        "title": "AnyComment: 打开大白话行间透视抽屉 (Peek Drawer)",
+        "title": "AnyComment: 打开代码内联透视 (Code Peek)",
         "category": "AnyComment"
       }
     ],

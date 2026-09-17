@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AnyComment — 交互体验原型 (UX Interactive Prototype)</title>
+  <title>AnyComment — 沉浸式双语对照与交互原型</title>
   <style>
     :root {
       --bg-editor: #1e1e1e;
@@ -17,16 +17,17 @@
       --text-function: #dcdcaa;
       --accent: #007acc;
       --accent-hover: #0098ff;
-      --ghost-color: #388bfd;
-      --peek-bg: #1f2428;
+      --tag-trans: #388bfd;
+      --tag-explain: #d2a8ff;
+      --peek-bg: #181c20;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", Consolas, monospace; }
-    body { background: #181818; color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    body { background: #121212; color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; user-select: none; }
 
     /* Top Bar */
     .top-bar {
-      background: #111;
+      background: #181818;
       padding: 10px 20px;
       display: flex;
       justify-content: space-between;
@@ -38,7 +39,7 @@
       background: #007acc;
       color: #fff;
       border: none;
-      padding: 5px 12px;
+      padding: 6px 14px;
       border-radius: 4px;
       font-size: 12px;
       font-weight: 600;
@@ -49,26 +50,6 @@
       transition: background 0.15s;
     }
     .btn-action:hover { background: #0098ff; }
-    .btn-secondary { background: #2d333b; color: #c9d1d9; border: 1px solid #444c56; }
-    .btn-secondary:hover { background: #373e47; }
-
-    /* State indicator */
-    .state-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 10px;
-      border-radius: 14px;
-      background: #222;
-      border: 1px solid #444;
-      font-family: monospace;
-      font-size: 12px;
-    }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: #888; }
-    .dot.idle { background: #888; }
-    .dot.loading { background: #e5c07b; animation: pulse 1s infinite alternate; }
-    .dot.success { background: #98c379; }
-    @keyframes pulse { from { opacity: 0.4; } to { opacity: 1; } }
 
     /* Editor */
     .workspace {
@@ -84,19 +65,19 @@
       font-family: "JetBrains Mono", Consolas, monospace;
       font-size: 14px;
       line-height: 24px;
-      padding-top: 20px;
+      padding-top: 24px;
     }
     .line-numbers {
-      width: 50px;
+      width: 55px;
       text-align: right;
-      padding-right: 18px;
+      padding-right: 20px;
       color: #555;
       user-select: none;
     }
     .code-content {
       flex: 1;
       position: relative;
-      padding-right: 20px;
+      padding-right: 24px;
     }
     .line {
       height: 24px;
@@ -105,132 +86,104 @@
       display: flex;
       align-items: center;
     }
-    .hover-target-area {
-      background: rgba(106, 153, 85, 0.12);
-      border: 1px dashed rgba(106, 153, 85, 0.4);
-      border-radius: 4px;
-      padding: 4px 8px;
-      margin: -4px -8px;
+
+    /* Target comment chunk */
+    .comment-area {
+      background: rgba(106, 153, 85, 0.1);
+      border-left: 3px solid #6a9955;
+      padding: 4px 10px;
+      margin-left: -13px;
+      border-radius: 0 4px 4px 0;
       cursor: pointer;
-      display: block;
-      width: fit-content;
-      transition: all 0.15s;
+      transition: background 0.15s;
     }
-    .hover-target-area:hover {
-      background: rgba(106, 153, 85, 0.22);
-      border-color: #6a9955;
+    .comment-area:hover {
+      background: rgba(106, 153, 85, 0.18);
     }
 
-    /* Floating Hover Card */
-    .hover-card {
+    /* Variant A: Unified Dual View Card (双语同屏对照) */
+    .unified-card {
       position: absolute;
-      top: 95px;
+      top: 100px;
       left: 10px;
       background: var(--bg-hover);
       border: 1px solid var(--border-hover);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65);
       border-radius: 6px;
-      padding: 12px 16px;
-      width: 500px;
+      padding: 14px 18px;
+      width: 560px;
       font-size: 13px;
-      line-height: 20px;
-      z-index: 999;
-      animation: fadeIn 0.15s ease-out;
+      line-height: 22px;
+      z-index: 100;
     }
-    .hover-card .title-badge {
-      font-weight: bold;
-      color: #61afef;
-      margin-bottom: 8px;
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
       display: flex;
       align-items: center;
       gap: 6px;
-    }
-    .hover-card .actions {
-      display: flex;
-      gap: 12px;
       margin-top: 10px;
-      padding-top: 8px;
-      border-top: 1px solid #333;
-      font-size: 12px;
+      margin-bottom: 4px;
     }
-    .hover-card a, .action-link {
-      color: var(--accent);
-      cursor: pointer;
-      font-weight: 500;
-      text-decoration: none;
-    }
-    .hover-card a:hover, .action-link:hover {
-      text-decoration: underline;
-      color: var(--accent-hover);
+    .section-title.trans { color: #58a6ff; }
+    .section-title.explain { color: #d2a8ff; }
+    .card-text {
+      color: #e6edf3;
+      background: #1c2128;
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: 1px solid #30363d;
+      font-size: 12.5px;
+      line-height: 20px;
     }
 
-    /* Skeleton shimmer */
-    .skeleton-line {
-      height: 14px;
-      background: linear-gradient(90deg, #333 25%, #444 50%, #333 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.5s infinite;
-      border-radius: 3px;
-      margin-bottom: 8px;
-    }
-    .skeleton-line.short { width: 50%; }
-    .skeleton-line.medium { width: 85%; }
-    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-
-    /* Variant B: Ghost Line */
-    .ghost-line {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      color: #9cdcfe;
-      font-style: italic;
-      background: rgba(56, 139, 253, 0.1);
-      border-left: 3px solid var(--ghost-color);
-      padding: 4px 10px;
-      margin: 6px 0;
-      border-radius: 0 4px 4px 0;
-      font-size: 13px;
-      animation: fadeIn 0.2s;
-    }
-    .ghost-loading { color: #e5c07b; }
-    .ghost-resolved { color: #7ee787; font-style: normal; }
-
-    /* Variant C: Peek Drawer */
-    .peek-drawer {
+    /* Variant B: Native Code Peek (代码内联透视) */
+    .peek-panel {
       background: var(--peek-bg);
       border-top: 1px solid #30363d;
       border-bottom: 1px solid #30363d;
-      padding: 12px 18px;
-      margin: 8px 0;
+      margin: 10px 0;
       border-radius: 4px;
-      animation: slideDown 0.2s ease-out;
+      box-shadow: inset 0 2px 8px rgba(0,0,0,0.5);
     }
-    @keyframes slideDown { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-    .peek-header {
+    .peek-title-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 13px;
+      background: #21262d;
+      padding: 6px 14px;
+      font-size: 12px;
       font-weight: 600;
       color: #58a6ff;
-      margin-bottom: 8px;
       border-bottom: 1px solid #30363d;
-      padding-bottom: 6px;
+    }
+    .peek-content {
+      padding: 12px 18px;
+      font-size: 13px;
+      line-height: 22px;
     }
 
-    .spinner {
-      display: inline-block;
-      width: 14px;
-      height: 14px;
-      border: 2px solid #555;
-      border-top-color: #61afef;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+    /* Variant C: Immersive Inline Dual (沉浸式行间并排对照) */
+    .inline-dual-container {
+      background: rgba(88, 166, 255, 0.06);
+      border-left: 3px solid #58a6ff;
+      padding: 6px 12px;
+      margin: 6px 0;
+      border-radius: 0 4px 4px 0;
+      font-size: 12.5px;
+      line-height: 22px;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    .inline-label {
+      font-weight: 600;
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-right: 6px;
+    }
+    .label-trans { background: rgba(56, 139, 253, 0.2); color: #79c0ff; }
+    .label-explain { background: rgba(210, 168, 255, 0.2); color: #d2a8ff; }
 
-    /* Floating Switcher Bar */
+    /* Bottom Floating Switcher */
     .prototype-bar {
       position: fixed;
       bottom: 24px;
@@ -240,7 +193,7 @@
       border: 1px solid #30363d;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85);
       border-radius: 30px;
-      padding: 8px 18px;
+      padding: 8px 20px;
       display: flex;
       align-items: center;
       gap: 16px;
@@ -259,7 +212,7 @@
       justify-content: center;
       cursor: pointer;
       font-weight: bold;
-      transition: background 0.15s, color 0.15s;
+      transition: background 0.15s;
     }
     .bar-btn:hover { background: #30363d; color: #fff; }
     .variant-title {
@@ -268,47 +221,43 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      min-width: 320px;
+      min-width: 380px;
       justify-content: center;
     }
   </style>
 </head>
 <body>
 
-  <!-- Top State Bar with Direct Triggers -->
+  <!-- Top Bar -->
   <div class="top-bar">
-    <div style="display: flex; align-items: center; gap: 12px;">
-      <span style="font-weight: bold; color: #58a6ff;">AnyComment 交互原型</span>
-      <button class="btn-action" onclick="forceShowHover()">⚡ 点击直接展开悬浮窗 (Pop Hover)</button>
-      <button class="btn-action btn-secondary" onclick="autoPlayDemo()">▶ 自动播放完整演示 (Auto Play)</button>
+    <div style="display: flex; align-items: center; gap: 14px;">
+      <span style="font-weight: 700; color: #58a6ff;">AnyComment 沉浸式双语对照原型</span>
+      <span style="color: #8b949e; font-size: 12px;">杜绝意图不明的切换与怪异命名，标准化沉浸阅读</span>
     </div>
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <span class="state-badge">
-        <span class="dot idle" id="state-dot"></span>
-        <span id="state-label">就绪 (鼠标移至绿字或点击上方按钮)</span>
-      </span>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn-action" onclick="resetView()">🔄 还原初始视图</button>
     </div>
   </div>
 
-  <!-- Main Editor Area -->
+  <!-- Main Workspace -->
   <div class="workspace">
     <div class="editor-container">
       <div class="line-numbers">
-        1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11
+        1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12
       </div>
       <div class="code-content" id="code-content">
-        <!-- Lines 1-3 wrapped in a big interactive target area -->
-        <div class="hover-target-area" id="hover-target" onmouseenter="showHoverCard()" onclick="showHoverCard()">
+        <!-- Lines 1-3: Comment Chunk -->
+        <div class="comment-area" id="comment-area" onclick="handleCommentClick()">
           <div class="line" style="color: var(--text-comment);">// During deepValueEqual, must keep track of checks that are</div>
           <div class="line" style="color: var(--text-comment);">// in progress. The comparison algorithm assumes that all</div>
           <div class="line" style="color: var(--text-comment);">// checks in progress are true when it reencounters them.</div>
         </div>
 
-        <!-- Dynamic Injection Zone (for Variant B & C) -->
-        <div id="injection-zone"></div>
+        <!-- Dynamic Injection Area for Variant B & C -->
+        <div id="dynamic-zone"></div>
 
         <!-- Following Go code -->
-        <div class="line" style="margin-top: 8px;"><span style="color: var(--text-keyword);">package</span> reflect</div>
+        <div class="line" style="margin-top: 6px;"><span style="color: var(--text-keyword);">package</span> reflect</div>
         <div class="line"></div>
         <div class="line"><span style="color: var(--text-keyword);">func</span> <span style="color: var(--text-function);">deepValueEqual</span>(v1, v2 <span style="color: var(--text-type);">Value</span>, visited <span style="color: var(--text-keyword);">map</span>[visit]<span style="color: var(--text-type);">bool</span>) <span style="color: var(--text-type);">bool</span> {</div>
         <div class="line">    <span style="color: var(--text-keyword);">if</span> !v1.IsValid() || !v2.IsValid() {</div>
@@ -317,44 +266,65 @@
         <div class="line">    <span style="color: var(--text-comment);">// ... pointer cycle detection</span></div>
         <div class="line">}</div>
 
-        <!-- Floating Hover Card (Variant A) -->
-        <div class="hover-card" id="hover-card">
-          <div id="hover-content">
-            <div style="color: #aaa; margin-bottom: 6px; font-size: 11px;">[已捕获 3 行连续多行注释 · 关联函数 reflect.deepValueEqual]</div>
-            <div style="background: #181818; padding: 8px; border-radius: 4px; font-family: monospace; color: #6a9955; font-size: 12px; margin-bottom: 8px;">
-              During deepValueEqual, must keep track of checks that are in progress...
-            </div>
-            <div class="actions">
-              <a onclick="triggerAction('translate')">🌐 翻译此内容</a>
-              <span style="color: #444;">|</span>
-              <a onclick="triggerAction('explain')">💡 大白话讲解</a>
-            </div>
+        <!-- Variant A Floating Card -->
+        <div class="unified-card" id="unified-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 6px;">
+            <span style="font-weight: bold; color: #f0f6fc;">💡 AnyComment 双语对照与技术解读</span>
+            <span style="font-size: 11px; color: #8b949e;">模型: deepseek-chat · 毫秒级缓存</span>
+          </div>
+
+          <!-- Section 1: Standard Translation -->
+          <div class="section-title trans">🌐 中文直译 (Literal Translation)</div>
+          <div class="card-text">
+            在 deepValueEqual 深度比较执行期间，必须跟踪记录正在进行的检查。当比较算法再次遇到这些正在检查中的对象时，假定它们全部为 true。
+          </div>
+
+          <!-- Section 2: Senior Engineer Plain-language Interpretation -->
+          <div class="section-title explain">💡 工程师通俗解读 (Plain Explanation)</div>
+          <div class="card-text" style="border-left: 3px solid #d2a8ff;">
+            这是 Go 语言用于<strong>防止递归死循环（Stack Overflow）</strong>的核心机制。当结构体之间相互引用成环时，算法在第一次比对指针时先记上一笔；一旦二次撞见相同的指针对，直接认定相等并跳过，确保深度比对安全退出。
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 11px; color: #8b949e;">
+            <span>关联函数: <code>reflect.deepValueEqual</code></span>
+            <span>按 Esc 或点击外部关闭</span>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Bottom Floating Switcher (Spec-Compliant) -->
+  <!-- Bottom Floating Switcher -->
   <div class="prototype-bar">
     <button class="bar-btn" onclick="prevVariant()" title="Previous (←)">◀</button>
     <div class="variant-title">
       <span id="variant-key" style="color: #58a6ff;">方案 A</span>
-      <span id="variant-name" style="color: #fff;">原地悬停骨架重锚定</span>
+      <span id="variant-name" style="color: #fff;">双语同屏对照卡片 (Unified Dual Card)</span>
     </div>
     <button class="bar-btn" onclick="nextVariant()" title="Next (→)">▶</button>
   </div>
 
   <script>
     const VARIANTS = {
-      'A': { key: 'A', name: '方案 A: 原地悬停骨架重锚定 (Hover Anchor & Skeleton)' },
-      'B': { key: 'B', name: '方案 B: 沉浸式行内幽灵流 (Inline Ghost Stream)' },
-      'C': { key: 'C', name: '方案 C: 行间内嵌透视抽屉 (Inline Peek Drawer)' }
+      'A': {
+        key: 'A',
+        name: '方案 A: 双语同屏对照卡片 (Unified Dual Card)',
+        desc: '【标准直译】与【工程师通俗解读】在同一个浮层中结构化展示，绝不切来切去、不乱变图标，直观稳定。'
+      },
+      'B': {
+        key: 'B',
+        name: '方案 B: 代码内联透视 (Inline Code Peek)',
+        desc: '使用 VS Code 官方标准的 Peek View，在代码行之间优雅嵌入双语对照板，鼠标随便移、打字不关闭。'
+      },
+      'C': {
+        key: 'C',
+        name: '方案 C: 沉浸式行间并排对照 (Immersive Dual Inline)',
+        desc: '类似网页沉浸式翻译，直接在英文注释下方紧贴插入半透明双语对照段，零浮窗遮挡，极速通读代码。'
+      }
     };
 
     const variantKeys = ['A', 'B', 'C'];
     let currentVariant = 'A';
-    let currentState = 'IDLE';
 
     function setVariant(v) {
       currentVariant = v;
@@ -365,7 +335,7 @@
       document.getElementById('variant-key').textContent = `方案 ${v}`;
       document.getElementById('variant-name').textContent = VARIANTS[v].name.split(':')[1].trim();
 
-      resetState();
+      renderVariantView();
     }
 
     function prevVariant() {
@@ -381,152 +351,59 @@
     window.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowLeft') prevVariant();
       if (e.key === 'ArrowRight') nextVariant();
+      if (e.key === 'Escape') resetView();
     });
 
-    function updateState(state, label) {
-      currentState = state;
-      const dot = document.getElementById('state-dot');
-      const text = document.getElementById('state-label');
-      dot.className = `dot ${state.toLowerCase()}`;
-      text.textContent = label;
-    }
+    function renderVariantView() {
+      const card = document.getElementById('unified-card');
+      const zone = document.getElementById('dynamic-zone');
 
-    function showHoverCard() {
-      const hoverCard = document.getElementById('hover-card');
-      hoverCard.style.display = 'block';
-      updateState('IDLE', '悬浮窗已就绪，请点击【💡 大白话讲解】测试体验');
-    }
-
-    function forceShowHover() {
-      showHoverCard();
-    }
-
-    function resetState() {
-      const hoverCard = document.getElementById('hover-card');
-      const content = document.getElementById('hover-content');
-      document.getElementById('injection-zone').innerHTML = '';
-
-      content.innerHTML = `
-        <div style="color: #aaa; margin-bottom: 6px; font-size: 11px;">[已捕获 3 行连续多行注释 · 关联函数 reflect.deepValueEqual]</div>
-        <div style="background: #181818; padding: 8px; border-radius: 4px; font-family: monospace; color: #6a9955; font-size: 12px; margin-bottom: 8px;">
-          During deepValueEqual, must keep track of checks that are in progress...
-        </div>
-        <div class="actions">
-          <a onclick="triggerAction('translate')">🌐 翻译此内容</a>
-          <span style="color: #444;">|</span>
-          <a onclick="triggerAction('explain')">💡 大白话讲解</a>
-        </div>
-      `;
-
-      hoverCard.style.display = 'block';
-      updateState('IDLE', '已就绪 (请点击【💡 大白话讲解】体验)');
-    }
-
-    function triggerAction(actionType) {
-      updateState('LOADING', 'AI 正在解析上下文 (请观察不同方案的视觉反馈)...');
+      card.style.display = 'none';
+      zone.innerHTML = '';
 
       if (currentVariant === 'A') {
-        // Variant A: Hover card stays open, shows loading skeleton
-        const content = document.getElementById('hover-content');
-        content.innerHTML = `
-          <div class="title-badge">
-            <span class="spinner"></span> AnyComment: 正在大白话解析 (请稍候)...
-          </div>
-          <div class="skeleton-line medium"></div>
-          <div class="skeleton-line"></div>
-          <div class="skeleton-line short"></div>
-          <div style="font-size: 11px; color: #888; margin-top: 6px;">
-            结合上下文签名 reflect.deepValueEqual 拆解循环指针检测机制...
-          </div>
-        `;
-
-        setTimeout(() => {
-          content.innerHTML = `
-            <div class="title-badge">💡 AnyComment 大白话讲解 [pragmatic]</div>
-            <p style="margin-bottom: 8px; color: #e6edf3;">
-              在执行 <code>deepValueEqual</code> 深度比较时，系统会记录当前正在比对的指针/对象。为了防止结构体之间相互引用导致<strong>无限递归死循环</strong>，算法规定：只要发现某个指针已经在比较队列中，就直接假定它们相等。
-            </p>
-            <div class="actions">
-              <a onclick="triggerAction('translate')">🌐 切换客观直译</a>
-              <span style="color: #444;">|</span>
-              <a onclick="triggerAction('explain')">🔄 重新生成</a>
-            </div>
-          `;
-          updateState('SUCCESS', '✅ 原地骨架屏平滑变为解析结果 (卡片全程未关闭)');
-        }, 1200);
-
+        card.style.display = 'block';
       } else if (currentVariant === 'B') {
-        // Variant B: Close hover, inject inline ghost text immediately
-        document.getElementById('hover-card').style.display = 'none';
-        const injection = document.getElementById('injection-zone');
-        injection.innerHTML = `
-          <div class="ghost-line ghost-loading" id="ghost-item">
-            <span class="spinner"></span>
-            <span>AnyComment: 正在大白话拆解上下文 (无需保持鼠标悬停，写代码不受影响)...</span>
+        zone.innerHTML = `
+          <div class="peek-panel">
+            <div class="peek-title-bar">
+              <span>📖 代码内联透视: deepequal.go (reflect.deepValueEqual)</span>
+              <span style="cursor: pointer; color: #888;" onclick="resetView()">✕ 关闭 (Esc)</span>
+            </div>
+            <div class="peek-content">
+              <div class="section-title trans" style="margin-top: 0;">🌐 中文直译 (Literal Translation)</div>
+              <div class="card-text" style="margin-bottom: 8px;">
+                在 deepValueEqual 深度比较执行期间，必须跟踪记录正在进行的检查。当比较算法再次遇到这些正在检查中的对象时，假定它们全部为 true。
+              </div>
+
+              <div class="section-title explain">💡 工程师通俗解读 (Plain Explanation)</div>
+              <div class="card-text" style="border-left: 3px solid #d2a8ff;">
+                这是 Go 语言用于<strong>防止递归死循环（Stack Overflow）</strong>的核心机制。当结构体之间相互引用成环时，算法在第一次比对指针时先记上一笔；一旦二次撞见相同的指针对，直接认定相等并跳过，确保深度比对安全退出。
+              </div>
+            </div>
           </div>
         `;
-
-        setTimeout(() => {
-          const item = document.getElementById('ghost-item');
-          if (item) {
-            item.className = 'ghost-line ghost-resolved';
-            item.innerHTML = `
-              <span>💡 [大白话]: 深度比对时追踪检查进度，若二次撞见正在比对的指针直接判定为相等，以此杜绝死循环。</span>
-              <span style="margin-left: auto; display: flex; gap: 8px; font-size: 11px;">
-                <a class="action-link" onclick="triggerAction('explain')">🔄 刷新</a>
-                <a class="action-link" style="color: #888;" onclick="resetState()">✕ 关闭</a>
-              </span>
-            `;
-            updateState('SUCCESS', '✅ 行内幽灵行完成渲染 (鼠标移走也不会丢失进度！)');
-          }
-        }, 1200);
-
       } else if (currentVariant === 'C') {
-        // Variant C: Inline Peek Drawer
-        document.getElementById('hover-card').style.display = 'none';
-        const injection = document.getElementById('injection-zone');
-        injection.innerHTML = `
-          <div class="peek-drawer">
-            <div class="peek-header">
-              <span>💡 AnyComment 代码透视解析 (reflect.deepValueEqual)</span>
-              <span style="cursor: pointer; color: #888;" onclick="resetState()">✕</span>
-            </div>
-            <div class="peek-body">
-              <div style="display: flex; gap: 8px; align-items: center; color: #e5c07b; margin-bottom: 4px;">
-                <span class="spinner"></span> 正在展开代码间透视抽屉...
-              </div>
-            </div>
+        zone.innerHTML = `
+          <div class="inline-dual-container">
+            <div><span class="inline-label label-trans">中文直译</span> 在 deepValueEqual 深度比较执行期间，必须跟踪记录正在进行的检查；再次遇到检查中的对象时假定为 true。</div>
+            <div style="margin-top: 4px;"><span class="inline-label label-explain">通俗解读</span> Go 底层循环引用防死循环机制：指针成环时直接判定为 true，避免 Stack Overflow 递归溢出。</div>
           </div>
         `;
-
-        setTimeout(() => {
-          const body = document.querySelector('.peek-body');
-          if (body) {
-            body.innerHTML = `
-              <div style="color: #7ee787; font-weight: bold; margin-bottom: 4px;">📌 核心作用与大白话拆解：</div>
-              <p style="color: #d2a8ff; margin-bottom: 6px;">
-                这是 Go 语言底层处理<strong>循环引用（Recursive Cycle Detection）</strong>的经典防御机制。当两个复合结构体相互引用时，深度比较会在进入时打上标记；如果再次遇到同一对指针，直接返回 true，彻底避免调用栈溢出（Stack Overflow）。
-              </p>
-              <div style="display: flex; gap: 12px; font-size: 11px; margin-top: 8px;">
-                <a class="action-link" onclick="triggerAction('translate')">🌐 查看客观直译</a>
-                <a class="action-link" onclick="resetState()">✕ 关闭透视</a>
-              </div>
-            `;
-            updateState('SUCCESS', '✅ 行间抽屉展开成功 (适合大段深度解析同屏比对)');
-          }
-        }, 1200);
       }
     }
 
-    function autoPlayDemo() {
-      resetState();
-      setTimeout(() => {
-        triggerAction('explain');
-      }, 500);
+    function handleCommentClick() {
+      renderVariantView();
     }
 
-    // Default open on start
-    resetState();
+    function resetView() {
+      document.getElementById('unified-card').style.display = 'none';
+      document.getElementById('dynamic-zone').innerHTML = '';
+    }
+
+    // Default load
+    setVariant('A');
   </script>
 </body>
 </html>
