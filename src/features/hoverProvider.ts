@@ -98,7 +98,12 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
 
       const refreshPayload = { ...basePayload, forceRefresh: true };
       md.appendMarkdown(
-        `[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(refreshPayload))}`)})\n`
+        `[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(refreshPayload))}`)})  |  `
+      );
+
+      // Open in Peek Drawer (Variant C)
+      md.appendMarkdown(
+        `[📖 行间透视抽屉 (Peek)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})\n`
       );
     } else {
       const transPayload = { ...basePayload, forceTranslate: true };
@@ -106,10 +111,13 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
 
       md.appendMarkdown(`---\n`);
       md.appendMarkdown(
-        `[🌐 翻译此内容](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})  |  `
+        `[💡 大白话抽屉 (推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify({ ...basePayload, forceExplain: true }))}`)})  |  `
       );
       md.appendMarkdown(
-        `[💡 大白话讲解](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(explainPayload))}`)})\n`
+        `[🌐 翻译抽屉](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify({ ...basePayload, forceTranslate: true }))}`)})  |  `
+      );
+      md.appendMarkdown(
+        `[悬停卡片直译](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})\n`
       );
     }
 

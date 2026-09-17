@@ -8,6 +8,8 @@ import { ImmersiveDecorator } from './features/immersiveDecorator.js';
 import { StatusBarManager } from './features/statusBar.js';
 import { AnyCommentViewProvider } from './webview/panel.js';
 import { OnboardingWizard } from './features/onboarding.js';
+import { PeekManager } from './features/peekManager.js';
+import { CommentExtractor } from './parser/commentExtractor.js';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   console.log('[AnyComment] Activating personal translation extension...');
@@ -203,7 +205,67 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   context.subscriptions.push(translateHoverCmd);
 
-  // 9. Run First-time Onboarding Wizard if not completed
+  // 10. Initialize PeekManager (Variant C: Inline Peek Drawer)
+  PeekManager.initialize(context);
+
+  const openPeekCmd = vscode.commands.registerCommand(
+    'anycomment.openPeek',
+    async (args?: {
+      text?: string;
+      uri?: string;
+      position?: { line: number; character: number };
+      isExplain?: boolean;
+      forceExplain?: boolean;
+      forceTranslate?: boolean;
+      signature?: string;
+    }) => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showWarningMessage('请先打开代码文件再使用行间透视抽屉');
+        return;
+      }
+
+      const position = args?.position
+        ? new vscode.Position(args.position.line, args.position.character)
+        : editor.selection.active;
+
+      let text = args?.text;
+      let signature = args?.signature;
+
+      if (!text) {
+        // Try extracting enclosing comment
+        const comment = CommentExtractor.extractEnclosingComment(editor.document, position);
+        if (comment) {
+          text = comment.cleanText;
+          signature = comment.associatedCodeSignature;
+        } else {
+          const selection = editor.selection;
+          text = editor.document.getText(selection).trim();
+        }
+      }
+
+      if (!text) {
+        text = await vscode.window.showInputBox({
+          prompt: '请输入要在透视抽屉中解析的文本或注释：',
+        });
+      }
+
+      if (!text) return;
+
+      const isExplain = args?.forceExplain ?? (args?.forceTranslate ? false : (args?.isExplain ?? true));
+
+      await PeekManager.openPeek({
+        document: editor.document,
+        position,
+        text,
+        isExplain,
+        signature,
+      });
+    }
+  );
+  context.subscriptions.push(openPeekCmd);
+
+  // 11. Run First-time Onboarding Wizard if not completed
   if (!configMgr.getConfig().hasCompletedOnboarding) {
     // Run wizard asynchronously so extension activation is not blocked
     setTimeout(() => {
