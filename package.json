@@ -3,7 +3,12 @@
   "displayName": "AnyComment",
   "description": "Personal AI-powered code comment & documentation translator with decoupled providers, partitioned disk caching, and plain-talk explanation.",
   "version": "0.2.0",
-  "publisher": "luliuyuan",
+  "publisher": "hoangngochuong24947-gif",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hoangngochuong24947-gif/AnyComment.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
