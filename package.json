@@ -1,0 +1,131 @@
+{
+  "name": "anycomment",
+  "displayName": "AnyComment",
+  "description": "Personal AI-powered code comment & documentation translator with decoupled providers and partitioned disk caching.",
+  "version": "0.1.0",
+  "publisher": "luliuyuan",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Education",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "anycomment.toggleImmersive",
+        "title": "AnyComment: 切换行内沉浸式注释翻译",
+        "category": "AnyComment"
+      },
+      {
+        "command": "anycomment.switchProvider",
+        "title": "AnyComment: 切换翻译服务 (Provider)",
+        "category": "AnyComment"
+      },
+      {
+        "command": "anycomment.switchStyle",
+        "title": "AnyComment: 切换提示词风格 (Prompt Style)",
+        "category": "AnyComment"
+      },
+      {
+        "command": "anycomment.translateHover",
+        "title": "AnyComment: 翻译当前文档",
+        "category": "AnyComment"
+      },
+      {
+        "command": "anycomment.clearCache",
+        "title": "AnyComment: 清理缓存",
+        "category": "AnyComment"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "anycomment.toggleImmersive",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "when": "editorTextFocus"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "anycomment-sidebar",
+          "title": "AnyComment",
+          "icon": "$(comment-discussion)"
+        }
+      ]
+    },
+    "views": {
+      "anycomment-sidebar": [
+        {
+          "type": "webview",
+          "id": "anycomment.managerView",
+          "name": "AnyComment 控制中心"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "AnyComment",
+      "properties": {
+        "anycomment.activeProvider": {
+          "type": "string",
+          "enum": ["openai", "vscode-lm", "google"],
+          "default": "openai",
+          "description": "当前使用的翻译 Provider"
+        },
+        "anycomment.activeStyle": {
+          "type": "string",
+          "enum": ["tech-plain", "literal", "deep-dive", "custom"],
+          "default": "tech-plain",
+          "description": "当前使用的提示词风格"
+        },
+        "anycomment.targetLanguage": {
+          "type": "string",
+          "default": "zh-CN",
+          "description": "目标翻译语言 (例如 zh-CN, en, ja)"
+        },
+        "anycomment.openai.baseURL": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "OpenAI 兼容接口的 Base URL (如 DeepSeek, Ollama 等)"
+        },
+        "anycomment.openai.model": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "description": "使用的模型名称 (如 deepseek-chat, gpt-4o-mini, qwen-plus)"
+        },
+        "anycomment.customStylePrompt": {
+          "type": "string",
+          "default": "你是一位资深工程师。请将以下代码注释/文档翻译为中文，保持技术术语准确，语气通俗简练。",
+          "description": "自定义提示词模板"
+        },
+        "anycomment.enableHoverAutoTranslate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hover 时未命中缓存是否自动调用 AI 翻译 (默认 false，通过点击 [翻译] 触发)"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "node esbuild.config.js --production",
+    "watch": "node esbuild.config.js --watch",
+    "test": "vitest run",
+    "lint": "tsc --noEmit"
+  },
+  "packageManager": "pnpm@11.5.1",
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

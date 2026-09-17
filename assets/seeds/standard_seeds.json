@@ -1,0 +1,48 @@
+{
+  "version": "1.0.0",
+  "description": "Pre-bundled standard library documentation translations for AnyComment",
+  "seeds": [
+    {
+      "identifier": "http.ListenAndServe",
+      "language": "go",
+      "sourceText": "ListenAndServe listens on the TCP network address addr and then calls Serve with handler to handle requests on incoming connections. Accepted connections are configured to enable TCP keep-alives.",
+      "targetLang": "zh-CN",
+      "translation": "ListenAndServe 监听指定的 TCP 网络地址 addr，随后调用 Serve 并传入 handler 处理传入连接上的 HTTP 请求。已接收的连接会自动配置并启用 TCP Keep-Alive 保活机制。"
+    },
+    {
+      "identifier": "sync.Mutex",
+      "language": "go",
+      "sourceText": "A Mutex is a mutual exclusion lock. The zero value for a Mutex is an unlocked mutex. A Mutex must not be copied after first use.",
+      "targetLang": "zh-CN",
+      "translation": "Mutex 是一个互斥锁。Mutex 的零值表示未加锁的互斥锁。注意：Mutex 在第一次使用后严禁进行值拷贝（必须按指针传递）。"
+    },
+    {
+      "identifier": "context.WithTimeout",
+      "language": "go",
+      "sourceText": "WithTimeout returns WithDeadline(parent, time.Now().Add(timeout)). Canceling this context releases resources associated with it, so code should call cancel as soon as the operations running in this Context complete.",
+      "targetLang": "zh-CN",
+      "translation": "WithTimeout 返回一个带有超时的派生 Context。一旦该 Context 被取消或超时，关联的资源将被释放；因此在操作完成后应尽早调用 cancel() 函数以防止上下文泄漏。"
+    },
+    {
+      "identifier": "io.ReadAll",
+      "language": "go",
+      "sourceText": "ReadAll reads from r until an error or EOF and returns the data it read. A successful call returns err == nil, not err == EOF.",
+      "targetLang": "zh-CN",
+      "translation": "ReadAll 从 Reader r 中读取全部数据直到发生错误或到达 EOF，并返回读取到的完整字节切片。读取成功时返回 err == nil（而非 err == EOF）。注意：对于大文件慎用以防内存爆满。"
+    },
+    {
+      "identifier": "Promise.all",
+      "language": "typescript",
+      "sourceText": "Creates a Promise that is resolved with an array of results when all of the provided Promises resolve, or rejected when any Promise is rejected.",
+      "targetLang": "zh-CN",
+      "translation": "创建一个 Promise。当传入的所有 Promise 全部 resolve 时，返回包含所有结果数组的 resolve；只要其中任意一个 Promise 被 reject，则立即整体 reject（快速失败机制）。"
+    },
+    {
+      "identifier": "Array.prototype.reduce",
+      "language": "typescript",
+      "sourceText": "Calls the specified callback function for all the elements in an array. The return value of the callback function is the accumulated result, and is provided as an argument in the next call to the callback function.",
+      "targetLang": "zh-CN",
+      "translation": "对数组中的每个元素按顺序执行传入的 reducer 回调函数。每次调用的返回值作为下一次调用的累计值（accumulator），最终输出单个汇总结果。"
+    }
+  ]
+}
