@@ -11,7 +11,7 @@ This file guides agents and engineers working on the AnyComment codebase.
 
 ### Issue tracker
 
-Local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+GitHub issues. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 
