@@ -5,37 +5,46 @@ import { CommentExtractor } from '../parser/commentExtractor.js';
 
 /**
  * AnyComment Hover Provider
- * Supports both standard technical translation and Chinese plain-talk explanation.
+ * Supports multi-line comment block aggregation, LSP hover interception, and in-place refresh.
  * Official Reference: https://code.visualstudio.com/api/references/vscode-api#languages.registerHoverProvider
  */
 export class AnyCommentHoverProvider implements vscode.HoverProvider {
+  // Re-entrancy guard to prevent infinite recursion when calling vscode.executeHoverProvider
+  private static isExecutingLsp = false;
+
   public async provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
     _token: vscode.CancellationToken
   ): Promise<vscode.Hover | undefined> {
-    const line = document.lineAt(position.line);
-    const lineText = line.text;
+    // If this call was triggered by our own LSP interception, return immediately
+    if (AnyCommentHoverProvider.isExecutingLsp) {
+      return undefined;
+    }
 
-    // 1. Identify comment on current line or symbol
-    const slashIdx = lineText.indexOf('//');
-    const hashIdx = lineText.indexOf('#');
     let targetText = '';
     let associatedSignature: string | undefined;
 
-    if (slashIdx !== -1 && position.character >= slashIdx) {
-      targetText = CommentExtractor.cleanCommentText(lineText.slice(slashIdx));
-      associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
-    } else if (hashIdx !== -1 && position.character >= hashIdx) {
-      targetText = CommentExtractor.cleanCommentText(lineText.slice(hashIdx));
-      associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
+    // 1. Check if cursor is on an enclosing comment block (multi-line //, #, or /* ... */)
+    const commentBlock = CommentExtractor.extractEnclosingComment(document, position);
+    if (commentBlock && commentBlock.cleanText.length > 2) {
+      targetText = commentBlock.cleanText;
+      associatedSignature = commentBlock.associatedCodeSignature;
     } else {
+      // 2. Not on a comment. Intercept LSP Hover documentation (e.g. for len, http.ListenAndServe)
       const wordRange = document.getWordRangeAtPosition(position);
       if (wordRange) {
         const word = document.getText(wordRange);
-        if (word.length >= 3) {
-          targetText = word;
-          associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
+        if (word.length >= 2) {
+          const lspDoc = await this.queryLspDocumentation(document, position);
+          if (lspDoc && lspDoc.docText.length > 3) {
+            targetText = lspDoc.docText;
+            associatedSignature = lspDoc.signature || word;
+          } else {
+            // Fallback to word only if no LSP docs available
+            targetText = word;
+            associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
+          }
         }
       }
     }
@@ -53,6 +62,14 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
     md.isTrusted = true;
     md.supportHtml = true;
 
+    // Coordinates to pass to command for in-place re-display via editor.action.showHover
+    const basePayload = {
+      text: targetText,
+      uri: document.uri.toString(),
+      position: { line: position.line, character: position.character },
+      signature: associatedSignature,
+    };
+
     if (cached) {
       const isExplain = config.enableExplainMode;
       const titleBadge = isExplain
@@ -63,34 +80,91 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
         ? '📦 官方标准库预置'
         : '🌐 标准基线';
 
-      md.appendMarkdown(`---\n### ${titleBadge}\n\n> ${cached.translation}\n\n`);
+      // Clean display without destructive blockquote '>' so multi-line code/lists render cleanly
+      md.appendMarkdown(`---\n### ${titleBadge}\n\n${cached.translation}\n\n---\n`);
 
-      // Bidirectional action links
+      // In-place action links
       if (isExplain) {
-        const transArgs = encodeURIComponent(JSON.stringify({ text: targetText, forceTranslate: true }));
-        md.appendMarkdown(`[🌐 查看客观直译](${vscode.Uri.parse(`command:anycomment.translateHover?${transArgs}`)})  `);
-      } else {
-        const explainArgs = encodeURIComponent(
-          JSON.stringify({ text: targetText, forceExplain: true, signature: associatedSignature })
+        const transPayload = { ...basePayload, forceTranslate: true };
+        md.appendMarkdown(
+          `[🌐 切换并查看客观直译](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})  |  `
         );
-        md.appendMarkdown(`[💡 大白话讲讲这个](${vscode.Uri.parse(`command:anycomment.translateHover?${explainArgs}`)})  `);
+      } else {
+        const explainPayload = { ...basePayload, forceExplain: true };
+        md.appendMarkdown(
+          `[💡 大白话讲讲这个](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(explainPayload))}`)})  |  `
+        );
       }
 
-      const refreshArgs = encodeURIComponent(
-        JSON.stringify({ text: targetText, forceRefresh: true, signature: associatedSignature })
+      const refreshPayload = { ...basePayload, forceRefresh: true };
+      md.appendMarkdown(
+        `[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(refreshPayload))}`)})\n`
       );
-      md.appendMarkdown(`[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.translateHover?${refreshArgs}`)})\n`);
     } else {
-      const transArgs = encodeURIComponent(JSON.stringify({ text: targetText, signature: associatedSignature }));
-      const explainArgs = encodeURIComponent(
-        JSON.stringify({ text: targetText, forceExplain: true, signature: associatedSignature })
-      );
+      const transPayload = { ...basePayload, forceTranslate: true };
+      const explainPayload = { ...basePayload, forceExplain: true };
 
       md.appendMarkdown(`---\n`);
-      md.appendMarkdown(`[🌐 翻译此内容](${vscode.Uri.parse(`command:anycomment.translateHover?${transArgs}`)})  |  `);
-      md.appendMarkdown(`[💡 大白话讲解](${vscode.Uri.parse(`command:anycomment.translateHover?${explainArgs}`)})\n`);
+      md.appendMarkdown(
+        `[🌐 翻译此内容](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(transPayload))}`)})  |  `
+      );
+      md.appendMarkdown(
+        `[💡 大白话讲解](${vscode.Uri.parse(`command:anycomment.translateHover?${encodeURIComponent(JSON.stringify(explainPayload))}`)})\n`
+      );
     }
 
     return new vscode.Hover(md);
+  }
+
+  /**
+   * Safely queries LSP for hover documentation with re-entrancy protection
+   */
+  private async queryLspDocumentation(
+    document: vscode.TextDocument,
+    position: vscode.Position
+  ): Promise<{ signature?: string; docText: string } | undefined> {
+    AnyCommentHoverProvider.isExecutingLsp = true;
+    try {
+      const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+        'vscode.executeHoverProvider',
+        document.uri,
+        position
+      );
+
+      if (!hovers || hovers.length === 0) {
+        return undefined;
+      }
+
+      const docParts: string[] = [];
+      let signature: string | undefined;
+
+      for (const hover of hovers) {
+        for (const item of hover.contents) {
+          const content = typeof item === 'string' ? item : item.value;
+          if (!content) continue;
+
+          // Check if item contains a fenced code block with the signature
+          const codeFenceMatch = content.match(/^```[\w-]*\n([\s\S]*?)\n```/);
+          if (codeFenceMatch && !signature) {
+            signature = codeFenceMatch[1]?.trim();
+            const rest = content.replace(codeFenceMatch[0], '').trim();
+            if (rest) docParts.push(rest);
+          } else {
+            const trimmed = content.trim();
+            if (trimmed) docParts.push(trimmed);
+          }
+        }
+      }
+
+      const docText = docParts.join('\n\n').trim();
+      if (!docText) return undefined;
+
+      return { signature, docText };
+    } catch (err: unknown) {
+      console.warn('[AnyComment] LSP query failed:', err);
+      return undefined;
+    } finally {
+      AnyCommentHoverProvider.isExecutingLsp = false;
+    }
   }
 }

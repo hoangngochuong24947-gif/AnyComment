@@ -54,6 +54,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       forceTranslate?: boolean;
       forceRefresh?: boolean;
       signature?: string;
+      uri?: string;
+      position?: { line: number; character: number };
     }) => {
       let textToTranslate = args?.text;
 
@@ -73,6 +75,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (!textToTranslate) {
         return;
+      }
+
+      if (args?.forceExplain) {
+        await configMgr.setEnableExplainMode(true);
+      } else if (args?.forceTranslate) {
+        await configMgr.setEnableExplainMode(false);
       }
 
       const config = configMgr.getConfig();
@@ -135,9 +143,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             immersiveDecorator.updateActiveEditor();
             viewProvider.sendCurrentState();
 
-            vscode.window.showInformationMessage(
-              `AnyComment (${response.model} · ${style.name}):\n\n${response.translatedText}`
-            );
+            // Re-trigger hover card in place at target position without popup toast
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+              if (args?.position) {
+                const pos = new vscode.Position(args.position.line, args.position.character);
+                editor.selection = new vscode.Selection(pos, pos);
+              }
+              await vscode.commands.executeCommand('editor.action.showHover');
+            } else {
+              vscode.window.setStatusBarMessage(`AnyComment: ${actionTitle}已完成并缓存`, 3000);
+            }
           } catch (err: unknown) {
             const message = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`AnyComment 处理失败: ${message}`);

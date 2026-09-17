@@ -159,12 +159,14 @@
     "build": "node esbuild.config.js --production",
     "watch": "node esbuild.config.js --watch",
     "test": "vitest run",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "package": "vsce package"
   },
   "packageManager": "pnpm@11.5.1",
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.21.5",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"
