@@ -69,8 +69,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!textToTranslate) {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
-          const selection = editor.selection;
-          textToTranslate = editor.document.getText(selection).trim();
+          if (!editor.selection.isEmpty) {
+            textToTranslate = editor.document.getText(editor.selection).trim();
+          } else {
+            const comment = CommentExtractor.extractEnclosingComment(editor.document, editor.selection.active);
+            if (comment) {
+              textToTranslate = comment.cleanText;
+              if (!args?.signature) {
+                args = { ...args, signature: comment.associatedCodeSignature } as any;
+              }
+            }
+          }
         }
       }
 
@@ -220,14 +229,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       let signature = args?.signature;
 
       if (!text) {
-        // Try extracting enclosing comment
-        const comment = CommentExtractor.extractEnclosingComment(editor.document, position);
-        if (comment) {
-          text = comment.cleanText;
-          signature = comment.associatedCodeSignature;
+        if (!editor.selection.isEmpty) {
+          text = editor.document.getText(editor.selection).trim();
+          signature = CommentExtractor.findAssociatedSignature(editor.document, editor.selection.end.line);
         } else {
-          const selection = editor.selection;
-          text = editor.document.getText(selection).trim();
+          // Try extracting enclosing comment or docstring
+          const comment = CommentExtractor.extractEnclosingComment(editor.document, position);
+          if (comment) {
+            text = comment.cleanText;
+            signature = comment.associatedCodeSignature;
+          }
         }
       }
 

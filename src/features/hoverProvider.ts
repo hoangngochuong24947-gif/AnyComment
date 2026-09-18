@@ -25,13 +25,35 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
     let targetText = '';
     let associatedSignature: string | undefined;
 
-    // 1. Check if cursor is on an enclosing comment block (multi-line //, #, or /* ... */)
-    const commentBlock = CommentExtractor.extractEnclosingComment(document, position);
-    if (commentBlock && commentBlock.cleanText.length > 2) {
-      targetText = commentBlock.cleanText;
-      associatedSignature = commentBlock.associatedCodeSignature;
-    } else {
-      // 2. Not on a comment. Intercept LSP Hover documentation (e.g. for len, http.ListenAndServe)
+    // Priority 0: Active Editor Selection (if user highlighted text and cursor is within selection)
+    const activeEditor = vscode.window.activeTextEditor;
+    if (
+      activeEditor &&
+      activeEditor.document.uri.toString() === document.uri.toString() &&
+      !activeEditor.selection.isEmpty &&
+      activeEditor.selection.contains(position)
+    ) {
+      const selectedText = document.getText(activeEditor.selection).trim();
+      if (selectedText.length > 1) {
+        targetText = selectedText;
+        associatedSignature = CommentExtractor.findAssociatedSignature(
+          document,
+          activeEditor.selection.end.line
+        );
+      }
+    }
+
+    // Priority 1: Enclosing Comment Block or Multiline Docstring (//, #, /* */, """ """, ''' ''')
+    if (!targetText) {
+      const commentBlock = CommentExtractor.extractEnclosingComment(document, position);
+      if (commentBlock && commentBlock.cleanText.length > 2) {
+        targetText = commentBlock.cleanText;
+        associatedSignature = commentBlock.associatedCodeSignature;
+      }
+    }
+
+    // Priority 2: LSP Documentation (functions, builtins, types e.g. len)
+    if (!targetText) {
       const wordRange = document.getWordRangeAtPosition(position);
       if (wordRange) {
         const word = document.getText(wordRange);
@@ -41,8 +63,19 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
             targetText = lspDoc.docText;
             associatedSignature = lspDoc.signature || word;
           } else {
-            // Fallback to word only if no LSP docs available
-            targetText = word;
+            // Priority 3: Check if cursor is inside a string literal ("...", '...', `...`)
+            const stringLiteral = CommentExtractor.extractEnclosingString(document, position);
+            if (stringLiteral && stringLiteral.length > 2) {
+              targetText = stringLiteral;
+            } else {
+              // Priority 4: Check if current line has an inline comment
+              const inlineComment = CommentExtractor.extractInlineComment(document, position.line);
+              if (inlineComment && inlineComment.length > 2) {
+                targetText = inlineComment;
+              } else {
+                targetText = word;
+              }
+            }
             associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
           }
         }
