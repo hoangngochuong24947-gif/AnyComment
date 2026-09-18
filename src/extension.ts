@@ -27,9 +27,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 3. Initialize Providers
   const providerRegistry = ProviderRegistry.getInstance();
 
-  // 4. Register Hover Provider for all programming languages
+  // 4. Register Hover Provider for all programming languages and untitled buffers
   const hoverProvider = vscode.languages.registerHoverProvider(
-    { scheme: 'file' },
+    [{ scheme: 'file' }, { scheme: 'untitled' }],
     new AnyCommentHoverProvider()
   );
   context.subscriptions.push(hoverProvider);
@@ -77,6 +77,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               textToTranslate = comment.cleanText;
               if (!args?.signature) {
                 args = { ...args, signature: comment.associatedCodeSignature } as any;
+              }
+            } else {
+              const str = CommentExtractor.extractEnclosingString(editor.document, editor.selection.active);
+              if (str) {
+                textToTranslate = str;
+              } else {
+                const inline = CommentExtractor.extractInlineComment(editor.document, editor.selection.active.line);
+                if (inline) {
+                  textToTranslate = inline;
+                }
               }
             }
           }
@@ -238,6 +248,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           if (comment) {
             text = comment.cleanText;
             signature = comment.associatedCodeSignature;
+          } else {
+            const str = CommentExtractor.extractEnclosingString(editor.document, position);
+            if (str) {
+              text = str;
+            } else {
+              const inline = CommentExtractor.extractInlineComment(editor.document, position.line);
+              if (inline) {
+                text = inline;
+              }
+            }
           }
         }
       }
