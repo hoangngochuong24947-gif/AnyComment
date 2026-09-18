@@ -8,6 +8,17 @@ export class Range {
   constructor(public start: Position, public end: Position) {}
 }
 
+export class ThemeColor {
+  constructor(public id: string) {}
+}
+
+export const DecorationRangeBehavior = {
+  OpenOpen: 0,
+  ClosedClosed: 1,
+  OpenClosed: 2,
+  ClosedOpen: 3,
+};
+
 export const workspace = {
   getConfiguration: vi.fn().mockReturnValue({
     get: vi.fn((key: string, defaultVal: unknown) => defaultVal),
@@ -19,10 +30,39 @@ export const window = {
   createTextEditorDecorationType: vi.fn().mockReturnValue({
     dispose: vi.fn(),
   }),
+  createWebviewPanel: vi.fn().mockReturnValue({
+    webview: {
+      html: '',
+      postMessage: vi.fn(),
+      onDidReceiveMessage: vi.fn(),
+    },
+    onDidDispose: vi.fn(),
+    dispose: vi.fn(),
+    reveal: vi.fn(),
+  }),
   showInformationMessage: vi.fn(),
   showErrorMessage: vi.fn(),
   showQuickPick: vi.fn(),
   showInputBox: vi.fn(),
+  setStatusBarMessage: vi.fn(),
+};
+
+export const ViewColumn = {
+  Active: -1,
+  Beside: -2,
+  One: 1,
+  Two: 2,
+};
+
+export const Uri = {
+  parse: (s: string) => ({ toString: () => s, fsPath: s }),
+  file: (s: string) => ({ toString: () => s, fsPath: s }),
+};
+
+export const env = {
+  clipboard: {
+    writeText: vi.fn().mockResolvedValue(undefined),
+  },
 };
 
 export const lm = {
@@ -45,3 +85,4 @@ export const ConfigurationTarget = {
   Workspace: 2,
   WorkspaceFolder: 3,
 };
+

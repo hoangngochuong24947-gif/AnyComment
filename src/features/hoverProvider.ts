@@ -116,16 +116,16 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
 
       md.appendMarkdown(`---\n`);
       md.appendMarkdown(
-        `[📖 打开代码内联透视 (方案 B 推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
+        `[📑 打开双语透视抽屉 (方案 D 推荐)](${vscode.Uri.parse(`command:anycomment.openDrawer?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
       );
       const refreshPayload = { ...basePayload, forceRefresh: true };
       md.appendMarkdown(
-        `[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(refreshPayload))}`)})\n`
+        `[🔄 重新生成](${vscode.Uri.parse(`command:anycomment.openDrawer?${encodeURIComponent(JSON.stringify(refreshPayload))}`)})\n`
       );
     } else {
       md.appendMarkdown(`---\n`);
       md.appendMarkdown(
-        `[📖 打开代码内联透视 (方案 B 推荐)](${vscode.Uri.parse(`command:anycomment.openPeek?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
+        `[📑 打开双语透视抽屉 (方案 D 推荐)](${vscode.Uri.parse(`command:anycomment.openDrawer?${encodeURIComponent(JSON.stringify(basePayload))}`)})  |  `
       );
       const transPayload = { ...basePayload, forceTranslate: true };
       md.appendMarkdown(

@@ -54,8 +54,13 @@
         "category": "AnyComment"
       },
       {
+        "command": "anycomment.openDrawer",
+        "title": "AnyComment: 打开双语透视抽屉 (Slide-out Drawer)",
+        "category": "AnyComment"
+      },
+      {
         "command": "anycomment.openPeek",
-        "title": "AnyComment: 打开代码内联透视 (Code Peek)",
+        "title": "AnyComment: 打开双语透视抽屉 (兼容别名)",
         "category": "AnyComment"
       }
     ],
@@ -73,7 +78,7 @@
         "when": "editorTextFocus"
       },
       {
-        "command": "anycomment.openPeek",
+        "command": "anycomment.openDrawer",
         "key": "ctrl+alt+d",
         "mac": "cmd+alt+d",
         "when": "editorTextFocus"

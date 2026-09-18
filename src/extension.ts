@@ -8,7 +8,7 @@ import { ImmersiveDecorator } from './features/immersiveDecorator.js';
 import { StatusBarManager } from './features/statusBar.js';
 import { AnyCommentViewProvider } from './webview/panel.js';
 import { OnboardingWizard } from './features/onboarding.js';
-import { PeekManager } from './features/peekManager.js';
+import { DrawerManager } from './features/drawerManager.js';
 import { CommentExtractor } from './parser/commentExtractor.js';
 import { StreamAnimator } from './features/streamAnimator.js';
 
@@ -210,77 +210,77 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
   context.subscriptions.push(translateHoverCmd);
 
-  // 10. Initialize PeekManager (Variant B: Native Code Peek)
-  PeekManager.initialize(context);
+  // 10. Initialize DrawerManager (Variant D: Slide-out Bilingual Drawer)
+  DrawerManager.initialize(context);
 
-  const openPeekCmd = vscode.commands.registerCommand(
-    'anycomment.openPeek',
-    async (args?: {
-      text?: string;
-      uri?: string;
-      position?: { line: number; character: number };
-      isExplain?: boolean;
-      forceExplain?: boolean;
-      forceTranslate?: boolean;
-      forceRefresh?: boolean;
-      signature?: string;
-    }) => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage('请先打开代码文件再使用代码内联透视');
-        return;
-      }
+  const openDrawerHandler = async (args?: {
+    text?: string;
+    uri?: string;
+    position?: { line: number; character: number };
+    isExplain?: boolean;
+    forceExplain?: boolean;
+    forceTranslate?: boolean;
+    forceRefresh?: boolean;
+    signature?: string;
+  }) => {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showWarningMessage('请先打开代码文件再使用双语透视抽屉');
+      return;
+    }
 
-      const position = args?.position
-        ? new vscode.Position(args.position.line, args.position.character)
-        : editor.selection.active;
+    const position = args?.position
+      ? new vscode.Position(args.position.line, args.position.character)
+      : editor.selection.active;
 
-      let text = args?.text;
-      let signature = args?.signature;
+    let text = args?.text;
+    let signature = args?.signature;
 
-      if (!text) {
-        if (!editor.selection.isEmpty) {
-          text = editor.document.getText(editor.selection).trim();
-          signature = CommentExtractor.findAssociatedSignature(editor.document, editor.selection.end.line);
+    if (!text) {
+      if (!editor.selection.isEmpty) {
+        text = editor.document.getText(editor.selection).trim();
+        signature = CommentExtractor.findAssociatedSignature(editor.document, editor.selection.end.line);
+      } else {
+        // Try extracting enclosing comment or docstring
+        const comment = CommentExtractor.extractEnclosingComment(editor.document, position);
+        if (comment) {
+          text = comment.cleanText;
+          signature = comment.associatedCodeSignature;
         } else {
-          // Try extracting enclosing comment or docstring
-          const comment = CommentExtractor.extractEnclosingComment(editor.document, position);
-          if (comment) {
-            text = comment.cleanText;
-            signature = comment.associatedCodeSignature;
+          const str = CommentExtractor.extractEnclosingString(editor.document, position);
+          if (str) {
+            text = str;
           } else {
-            const str = CommentExtractor.extractEnclosingString(editor.document, position);
-            if (str) {
-              text = str;
-            } else {
-              const inline = CommentExtractor.extractInlineComment(editor.document, position.line);
-              if (inline) {
-                text = inline;
-              }
+            const inline = CommentExtractor.extractInlineComment(editor.document, position.line);
+            if (inline) {
+              text = inline;
             }
           }
         }
       }
+    }
 
-      if (!text) {
-        text = await vscode.window.showInputBox({
-          prompt: '请输入要在代码内联透视中解析的文本或注释：',
-        });
-      }
-
-      if (!text) return;
-
-      await PeekManager.openPeek({
-        document: editor.document,
-        position,
-        text,
-        signature,
-        forceRefresh: args?.forceRefresh,
-        editor,
+    if (!text) {
+      text = await vscode.window.showInputBox({
+        prompt: '请输入要在双语透视抽屉中解析的文本或注释：',
       });
     }
-  );
-  context.subscriptions.push(openPeekCmd);
+
+    if (!text) return;
+
+    await DrawerManager.openDrawer({
+      document: editor.document,
+      position,
+      text,
+      signature,
+      forceRefresh: args?.forceRefresh,
+      editor,
+    });
+  };
+
+  const openDrawerCmd = vscode.commands.registerCommand('anycomment.openDrawer', openDrawerHandler);
+  const openPeekCmd = vscode.commands.registerCommand('anycomment.openPeek', openDrawerHandler);
+  context.subscriptions.push(openDrawerCmd, openPeekCmd);
 
   // 11. Run First-time Onboarding Wizard if not completed
   if (!configMgr.getConfig().hasCompletedOnboarding) {
