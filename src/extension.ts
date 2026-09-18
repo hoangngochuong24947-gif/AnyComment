@@ -145,11 +145,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         },
         async () => {
           try {
-            const response = await providerRegistry.executeTranslation({
-              sourceText: textToTranslate!,
-              targetLang: config.targetLanguage,
-              style: effectiveStyle,
-            });
+            const response = await (async () => {
+              if (!isExplain) {
+                // For fast literal translation, prioritize fast MT provider to guarantee instant response
+                try {
+                  const fastProvider = providerRegistry.getProvider('google');
+                  return await fastProvider.translate({
+                    sourceText: textToTranslate!,
+                    targetLang: config.targetLanguage,
+                    style: effectiveStyle,
+                  });
+                } catch {
+                  return await providerRegistry.executeTranslation({
+                    sourceText: textToTranslate!,
+                    targetLang: config.targetLanguage,
+                    style: effectiveStyle,
+                  });
+                }
+              } else {
+                return await providerRegistry.executeTranslation({
+                  sourceText: textToTranslate!,
+                  targetLang: config.targetLanguage,
+                  style: effectiveStyle,
+                });
+              }
+            })();
 
             if (!isExplain && (response.providerId === 'google' || style.id === 'literal-accurate')) {
               // Save to standard store baseline
@@ -181,6 +201,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             // Refresh decorations and views
             immersiveDecorator.updateActiveEditor();
             viewProvider.sendCurrentState();
+
+            // Also update drawer if open
+            if (DrawerManager.currentPanel && editor) {
+              DrawerManager.openDrawer({
+                document: editor.document,
+                position: args?.position
+                  ? new vscode.Position(args.position.line, args.position.character)
+                  : editor.selection.active,
+                text: textToTranslate!,
+                signature: args?.signature,
+                editor,
+              }).catch(() => {});
+            }
 
             // Re-trigger hover card in place at target position with active editor focus
             if (editor) {

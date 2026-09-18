@@ -9,9 +9,15 @@ import { window, ViewColumn, Position } from './mocks/vscode.js';
 
 describe('DrawerManager Tests (Variant D Slide-out Drawer)', () => {
   let tempDir: string;
+  const originalFetch = globalThis.fetch;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [[['透视抽屉测试译文', 'source', null, null]]],
+    } as unknown as Response);
+
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'anycomment-drawer-test-'));
 
     const mockContext: any = {
@@ -32,6 +38,7 @@ describe('DrawerManager Tests (Variant D Slide-out Drawer)', () => {
   });
 
   afterEach(async () => {
+    globalThis.fetch = originalFetch;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 

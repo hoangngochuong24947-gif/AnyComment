@@ -2,10 +2,12 @@ import * as vscode from 'vscode';
 import { StorageManager } from '../storage/storageManager.js';
 import { ConfigManager } from '../config/index.js';
 import { CommentExtractor } from '../parser/commentExtractor.js';
+import { ProviderRegistry } from '../providers/registry.js';
 
 /**
  * AnyComment Hover Provider
- * Supports multi-line comment block aggregation, LSP hover interception, and in-place refresh.
+ * Supports multi-line comment block aggregation, instant hover auto-translation,
+ * fast-timeout LSP interception, and in-place refresh.
  * Official Reference: https://code.visualstudio.com/api/references/vscode-api#languages.registerHoverProvider
  */
 export class AnyCommentHoverProvider implements vscode.HoverProvider {
@@ -24,6 +26,7 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
 
     let targetText = '';
     let associatedSignature: string | undefined;
+    let isDocumentation = false;
 
     // Priority 0: Active Editor Selection (if user highlighted text and cursor is within selection)
     const activeEditor = vscode.window.activeTextEditor;
@@ -36,6 +39,7 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
       const selectedText = document.getText(activeEditor.selection).trim();
       if (selectedText.length > 1) {
         targetText = selectedText;
+        isDocumentation = true;
         associatedSignature = CommentExtractor.findAssociatedSignature(
           document,
           activeEditor.selection.end.line
@@ -48,6 +52,7 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
       const commentBlock = CommentExtractor.extractEnclosingComment(document, position);
       if (commentBlock && commentBlock.cleanText.length > 2) {
         targetText = commentBlock.cleanText;
+        isDocumentation = true;
         associatedSignature = commentBlock.associatedCodeSignature;
       }
     }
@@ -61,19 +66,23 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
           const lspDoc = await this.queryLspDocumentation(document, position);
           if (lspDoc && lspDoc.docText.length > 3) {
             targetText = lspDoc.docText;
+            isDocumentation = true;
             associatedSignature = lspDoc.signature || word;
           } else {
             // Priority 3: Check if cursor is inside a string literal ("...", '...', `...`)
             const stringLiteral = CommentExtractor.extractEnclosingString(document, position);
             if (stringLiteral && stringLiteral.length > 2) {
               targetText = stringLiteral;
+              isDocumentation = true;
             } else {
               // Priority 4: Check if current line has an inline comment
               const inlineComment = CommentExtractor.extractInlineComment(document, position.line);
               if (inlineComment && inlineComment.length > 2) {
                 targetText = inlineComment;
+                isDocumentation = true;
               } else {
                 targetText = word;
+                isDocumentation = false;
               }
             }
             associatedSignature = CommentExtractor.findAssociatedSignature(document, position.line);
@@ -89,8 +98,55 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
     const config = ConfigManager.getInstance().getConfig();
     const storage = StorageManager.getInstance();
 
-    const cachedLiteral = storage.get(targetText, config.targetLanguage, 'literal-accurate');
+    let cachedLiteral = storage.get(targetText, config.targetLanguage, 'literal-accurate');
     const cachedExplain = storage.get(targetText, config.targetLanguage, config.explainStyle);
+
+    // Instant Hover Direct Translation: if uncached documentation/comment, immediately race fast translation (<250ms)
+    // so hover card pops up directly with Chinese text rather than an empty prompt!
+    if (!cachedLiteral && !cachedExplain && isDocumentation) {
+      try {
+        const fastProvider = ProviderRegistry.getInstance().getProvider('google');
+        const style = ConfigManager.getInstance().getTranslationStyle('literal-accurate');
+
+        const translationPromise = fastProvider.translate({
+          sourceText: targetText,
+          targetLang: config.targetLanguage,
+          style,
+        });
+
+        // Fire-and-forget background cache update if network takes longer than race timeout
+        translationPromise
+          .then(async (res) => {
+            if (res && res.translatedText) {
+              await storage.saveStandardTranslation(
+                targetText,
+                config.targetLanguage,
+                res.translatedText,
+                'google'
+              );
+            }
+          })
+          .catch(() => {});
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Hover translation timeout')), 250)
+        );
+
+        const res = await Promise.race([translationPromise, timeoutPromise]);
+        if (res && res.translatedText) {
+          cachedLiteral = {
+            translation: res.translatedText,
+            partition: 'standard',
+            source: 'google',
+            styleId: 'literal-accurate',
+            isFallback: false,
+            updatedAt: Date.now(),
+          };
+        }
+      } catch {
+        // Fall back gracefully to manual action prompt if fast channel times out (>250ms) or is offline
+      }
+    }
 
     const md = new vscode.MarkdownString();
     md.isTrusted = true;
@@ -137,7 +193,7 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
   }
 
   /**
-   * Safely queries LSP for hover documentation with re-entrancy protection
+   * Safely queries LSP for hover documentation with re-entrancy protection and strict 150ms timeout
    */
   private async queryLspDocumentation(
     document: vscode.TextDocument,
@@ -145,11 +201,17 @@ export class AnyCommentHoverProvider implements vscode.HoverProvider {
   ): Promise<{ signature?: string; docText: string } | undefined> {
     AnyCommentHoverProvider.isExecutingLsp = true;
     try {
-      const hovers = await vscode.commands.executeCommand<vscode.Hover[]>(
+      const lspQueryPromise = vscode.commands.executeCommand<vscode.Hover[]>(
         'vscode.executeHoverProvider',
         document.uri,
         position
       );
+
+      const timeoutPromise = new Promise<undefined>((resolve) =>
+        setTimeout(() => resolve(undefined), 150)
+      );
+
+      const hovers = await Promise.race([lspQueryPromise, timeoutPromise]);
 
       if (!hovers || hovers.length === 0) {
         return undefined;

@@ -12,6 +12,32 @@ export class ThemeColor {
   constructor(public id: string) {}
 }
 
+export class MarkdownString {
+  public value: string = '';
+  public isTrusted: boolean = false;
+  public supportHtml: boolean = false;
+  constructor(val?: string) {
+    if (val) this.value = val;
+  }
+  appendMarkdown(val: string) {
+    this.value += val;
+    return this;
+  }
+  appendText(val: string) {
+    this.value += val;
+    return this;
+  }
+}
+
+export class Hover {
+  constructor(public contents: MarkdownString | string | any[], public range?: Range) {}
+}
+
+export const commands = {
+  executeCommand: vi.fn(),
+  registerCommand: vi.fn(),
+};
+
 export const DecorationRangeBehavior = {
   OpenOpen: 0,
   ClosedClosed: 1,
@@ -27,6 +53,8 @@ export const workspace = {
 };
 
 export const window = {
+  activeTextEditor: undefined as any,
+  visibleTextEditors: [] as any[],
   createTextEditorDecorationType: vi.fn().mockReturnValue({
     dispose: vi.fn(),
   }),
